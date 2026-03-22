@@ -1,0 +1,7 @@
+{
+  "name": "服薬管理アプリ",
+  "description": "A simple and aesthetic medication management app featuring calendar views, inventory tracking, and daily reminders.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

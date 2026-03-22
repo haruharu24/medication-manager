@@ -1,0 +1,292 @@
+
+import React, { useState, useEffect } from 'react';
+import { format, subDays } from 'date-fns';
+import { BottomNav } from './components/BottomNav';
+import { MedicationForm } from './components/MedicationForm';
+import { CameraModal } from './components/CameraModal';
+import { Medication, MedicationLog, ViewMode, DailyCondition, GlobalActionLog, ReportConfig, ReminderSettings } from './types';
+import { UNITS, LABELS } from './constants';
+import { HomeView } from './features/home/HomeView';
+import { MedicationListView } from './features/meds/MedicationListView';
+import { ReportSetupView } from './features/report/ReportSetupView';
+import { ReportPreviewView } from './features/report/ReportPreviewView';
+import { ReminderOverlay } from './components/ReminderOverlay';
+import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock } from 'lucide-react';
+// Fix: Import GoogleGenAI and Type for AI-powered scanning
+import { GoogleGenAI, Type } from "@google/genai";
+
+const App: React.FC = () => {
+  const [view, setView] = useState<ViewMode>('home');
+  const [medications, setMedications] = useState<Medication[]>([]);
+  const [logs, setLogs] = useState<MedicationLog[]>([]);
+  const [globalLogs, setGlobalLogs] = useState<GlobalActionLog[]>([]);
+  const [conditions, setConditions] = useState<DailyCondition[]>([]);
+  
+  const [reminderSettings, setReminderSettings] = useState<ReminderSettings>({
+    enabled: false,
+    time: '08:00',
+    lastCheckedDate: ''
+  });
+
+  const [showReminderOverlay, setShowReminderOverlay] = useState(false);
+
+  const [reportConfig, setReportConfig] = useState<ReportConfig>({
+    start: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
+    end: format(new Date(), 'yyyy-MM-dd'),
+    includeMeds: true,
+    includeCondition: true,
+    includeHistory: true
+  });
+
+  const [editingMed, setEditingMed] = useState<Medication | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+
+  useEffect(() => {
+    try {
+      const load = (key: string) => JSON.parse(localStorage.getItem(key) || '[]');
+      setMedications(load('medications'));
+      setLogs(load('logs'));
+      setGlobalLogs(load('globalLogs'));
+      setConditions(load('conditions'));
+      
+      const savedReminder = localStorage.getItem('reminderSettings');
+      if (savedReminder) {
+        const settings: ReminderSettings = JSON.parse(savedReminder);
+        setReminderSettings(settings);
+        
+        // Check if we should show the reminder overlay
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const now = format(new Date(), 'HH:mm');
+        
+        if (settings.enabled && settings.lastCheckedDate !== today && now >= settings.time) {
+          setShowReminderOverlay(true);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load local storage", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('medications', JSON.stringify(medications));
+    localStorage.setItem('logs', JSON.stringify(logs));
+    localStorage.setItem('globalLogs', JSON.stringify(globalLogs));
+    localStorage.setItem('conditions', JSON.stringify(conditions));
+    localStorage.setItem('reminderSettings', JSON.stringify(reminderSettings));
+  }, [medications, logs, globalLogs, conditions, reminderSettings]);
+
+  const addGlobalLog = (type: GlobalActionLog['type'], title: string, details?: string) => {
+    const newLog: GlobalActionLog = { id: crypto.randomUUID(), timestamp: Date.now(), type, title, details };
+    setGlobalLogs(prev => [newLog, ...prev].slice(0, 100));
+  };
+
+  const handleSaveMed = (med: Medication) => {
+    const isEdit = medications.some(m => m.id === med.id);
+    setMedications(prev => isEdit ? prev.map(m => m.id === med.id ? med : m) : [...prev, med]);
+    addGlobalLog(isEdit ? 'update' : 'add', med.title, isEdit ? '情報を更新しました' : '新規登録しました');
+    setIsFormOpen(false);
+    setEditingMed(null);
+  };
+
+  // Fix: Added handleScan implementation using Gemini AI to extract medication data
+  const handleScan = async (base64: string) => {
+    setIsCameraOpen(false);
+    setIsScanning(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: {
+          parts: [
+            { inlineData: { data: base64, mimeType: 'image/jpeg' } },
+            { text: "お薬手帳の画像を解析して、記載されているお薬のリストを抽出し、指定されたJSON形式で返してください。日本語で回答してください。不明な項目はデフォルト値（錠、朝食後など）を使用してください。" }
+          ]
+        },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING, description: "お薬の名前" },
+                dosage: { type: Type.NUMBER, description: "1回の服用量（数値のみ）" },
+                unit: { type: Type.STRING, description: "単位（錠、カプセル、包など）" },
+                label: { type: Type.STRING, description: "服用タイミング（朝食後、夕食後など）" },
+                memo: { type: Type.STRING, description: "補足情報" },
+                stock: { type: Type.NUMBER, description: "処方された総数（在庫）" }
+              },
+              required: ["title", "dosage", "unit", "label"]
+            }
+          }
+        }
+      });
+
+      const jsonStr = response.text?.trim();
+      if (jsonStr) {
+        const results = JSON.parse(jsonStr);
+        if (Array.isArray(results)) {
+          results.forEach(res => {
+            const newMed: Medication = {
+              id: crypto.randomUUID(),
+              title: res.title || '不明なお薬',
+              dosage: res.dosage || 1,
+              unit: (UNITS.includes(res.unit as any) ? res.unit : '錠') as any,
+              label: (LABELS.includes(res.label as any) ? res.label : '朝食後') as any,
+              stock: res.stock || 0,
+              memo: res.memo || '',
+              color: 'emerald',
+              startDate: Date.now(),
+              isFolder: false,
+            };
+            setMedications(prev => [...prev, newMed]);
+            addGlobalLog('scan', newMed.title, 'AIスキャンにより追加しました');
+          });
+        }
+      }
+    } catch (error) {
+      console.error("AI scanning error:", error);
+      alert("AIによる読み取りに失敗しました。手動で入力してください。");
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  return (
+    <div className="bg-slate-100 min-h-screen max-w-md mx-auto shadow-2xl flex flex-col relative overflow-hidden">
+      <div className="flex-1 overflow-hidden relative">
+        {view === 'home' && (
+          <HomeView 
+            medications={medications} 
+            logs={logs} 
+            setLogs={setLogs} 
+            setMedications={setMedications}
+            conditions={conditions}
+            setConditions={setConditions}
+            onEditMed={(med) => { setEditingMed(med); setIsFormOpen(true); }}
+            onOpenForm={() => { setEditingMed(null); setIsFormOpen(true); }}
+            onOpenScan={() => setIsCameraOpen(true)}
+          />
+        )}
+        {view === 'meds' && (
+          <MedicationListView 
+            medications={medications} 
+            globalLogs={globalLogs}
+            onEditMed={(med) => { setEditingMed(med); setIsFormOpen(true); }}
+            onOpenForm={() => { setEditingMed(null); setIsFormOpen(true); }}
+            onOpenScan={() => setIsCameraOpen(true)}
+          />
+        )}
+        {view === 'report-setup' && (
+          <ReportSetupView 
+            config={reportConfig} 
+            setConfig={setReportConfig} 
+            onBack={() => setView('settings')}
+            onGenerate={() => setView('report')}
+          />
+        )}
+        {view === 'report' && (
+          <ReportPreviewView 
+            config={reportConfig} 
+            medications={medications} 
+            logs={logs} 
+            conditions={conditions}
+            globalLogs={globalLogs}
+            onBack={() => setView('report-setup')}
+          />
+        )}
+        {view === 'settings' && (
+          <div className="flex flex-col h-full bg-slate-50 animate-in fade-in duration-300">
+            <div className="bg-slate-50 py-3 safe-top border-b border-slate-200"><h1 className="text-center font-bold text-slate-800">設定</h1></div>
+            <div className="p-5 space-y-4">
+              <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center">
+                      <Bell size={20} />
+                    </div>
+                    <div>
+                      <p className="font-black text-slate-800">強制リマインド</p>
+                      <p className="text-[10px] text-slate-400 font-bold">指定時間以降の起動時に警告</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setReminderSettings(prev => ({ ...prev, enabled: !prev.enabled }))}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${reminderSettings.enabled ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${reminderSettings.enabled ? 'left-7' : 'left-1'}`} />
+                  </button>
+                </div>
+
+                {reminderSettings.enabled && (
+                  <div className="flex items-center gap-3 pt-2 border-t border-slate-50">
+                    <Clock size={16} className="text-slate-400" />
+                    <span className="text-sm font-bold text-slate-600">開始時間:</span>
+                    <input 
+                      type="time" 
+                      value={reminderSettings.time}
+                      onChange={(e) => setReminderSettings(prev => ({ ...prev, time: e.target.value }))}
+                      className="bg-slate-50 border-none rounded-lg px-3 py-1 font-black text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <button onClick={() => setView('report-setup')} className="w-full p-6 bg-white rounded-[32px] border border-slate-100 flex items-center justify-between font-black text-slate-800 shadow-sm active:scale-95 transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center"><FileDown size={24}/></div>
+                  <div className="text-left"><p className="text-lg">レポート作成</p><p className="text-xs text-slate-400 font-bold">PDF出力・印刷・共有</p></div>
+                </div>
+                <ChevronRight size={20} className="text-slate-300" />
+              </button>
+              <button onClick={() => { if(window.confirm('全データを削除しますか？')) { localStorage.clear(); location.reload(); }}} className="w-full p-4 bg-white rounded-3xl border border-red-50 text-red-500 font-bold flex items-center gap-3 active:scale-95 transition-transform">
+                <RotateCcw size={20} /> データリセット
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <BottomNav currentView={view} onChange={setView} />
+      
+      {showReminderOverlay && (
+        <ReminderOverlay 
+          reminderTime={reminderSettings.time}
+          onConfirm={() => {
+            setReminderSettings(prev => ({ ...prev, lastCheckedDate: format(new Date(), 'yyyy-MM-dd') }));
+            setShowReminderOverlay(false);
+          }}
+        />
+      )}
+
+      {/* Fix: Passed handleScan to the CameraModal */}
+      {isCameraOpen && <CameraModal onCapture={handleScan} onCancel={() => setIsCameraOpen(false)} />}
+      
+      {isScanning && (
+        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md flex flex-col items-center justify-center text-white">
+          <Loader2 size={48} className="animate-spin mb-4 text-emerald-400" />
+          <p className="font-bold tracking-widest uppercase text-xs">AI Scanning...</p>
+        </div>
+      )}
+
+      {isFormOpen && (
+        <MedicationForm 
+          initialData={editingMed || undefined}
+          onSave={handleSaveMed}
+          onCancel={() => { setIsFormOpen(false); setEditingMed(null); }}
+          onDelete={(id) => {
+            setMedications(medications.filter(m => m.id !== id && m.parentId !== id));
+            addGlobalLog('delete', editingMed?.title || '不明', '情報を削除しました');
+            setIsFormOpen(false);
+          }}
+          visibleUnits={UNITS}
+          visibleLabels={LABELS}
+        />
+      )}
+    </div>
+  );
+};
+
+export default App;
