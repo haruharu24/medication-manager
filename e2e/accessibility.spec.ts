@@ -86,4 +86,16 @@ test.describe('accessibility @a11y', () => {
     const violations = await scan(page);
     expect(violations, formatViolations(violations)).toEqual([]);
   });
+
+  test.describe('with onboarding not yet dismissed', () => {
+    // Override the project default (onboarding pre-dismissed) to actually see the overlay.
+    test.use({ storageState: { cookies: [], origins: [] } });
+
+    test('the first-run onboarding overlay has no detectable a11y violations', async ({ page }) => {
+      await page.goto('/');
+      await expect(page.getByRole('heading', { name: 'MediMateへようこそ' })).toBeVisible();
+      const violations = await scan(page);
+      expect(violations, formatViolations(violations)).toEqual([]);
+    });
+  });
 });

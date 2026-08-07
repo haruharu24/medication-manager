@@ -27,6 +27,11 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${APP_PORT}`,
     trace: 'retain-on-failure',
+    // Most specs exercise a specific feature and don't care about the first-run
+    // onboarding overlay, which would otherwise block every interaction on a
+    // fresh context. Pre-seed localStorage so it's already dismissed; the
+    // onboarding spec itself opts back out of this fixture to test it for real.
+    storageState: './e2e/fixtures/onboarding-completed.json',
   },
   projects: [
     {

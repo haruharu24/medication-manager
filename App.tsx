@@ -15,7 +15,8 @@ import { MedicationListView } from './features/meds/MedicationListView';
 import { ReportSetupView } from './features/report/ReportSetupView';
 import { ReportPreviewView } from './features/report/ReportPreviewView';
 import { ReminderOverlay } from './components/ReminderOverlay';
-import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload, ShieldAlert, Moon, Sun } from 'lucide-react';
+import { OnboardingOverlay } from './components/OnboardingOverlay';
+import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload, ShieldAlert, Moon, Sun, HelpCircle } from 'lucide-react';
 // Fix: Import GoogleGenAI and Type for AI-powered scanning
 import { GoogleGenAI, Type } from "@google/genai";
 import { markMedicationTaken } from './utils/medicationActions';
@@ -51,6 +52,7 @@ const App: React.FC = () => {
   });
 
   const [showReminderOverlay, setShowReminderOverlay] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const [reportConfig, setReportConfig] = useState<ReportConfig>({
     start: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
@@ -234,12 +236,21 @@ const App: React.FC = () => {
           setShowReminderOverlay(true);
         }
       }
+
+      if (localStorage.getItem('onboardingCompleted') !== 'true') {
+        setShowOnboarding(true);
+      }
     } catch (e) {
       console.error("Failed to load local storage", e);
     } finally {
       setSettingsLoaded(true);
     }
   }, []);
+
+  const handleFinishOnboarding = () => {
+    localStorage.setItem('onboardingCompleted', 'true');
+    setShowOnboarding(false);
+  };
 
   useEffect(() => {
     // Guard against writing back the pre-load default state (empty arrays) over
@@ -642,6 +653,14 @@ const App: React.FC = () => {
                 <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
               </button>
 
+              <button onClick={() => setShowOnboarding(true)} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-teal-50 dark:bg-teal-500/10 text-teal-600 rounded-2xl flex items-center justify-center"><HelpCircle size={24}/></div>
+                  <div className="text-left"><p className="text-lg">使い方を見る</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">アプリの基本的な使い方を確認</p></div>
+                </div>
+                <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
+              </button>
+
               <button
                 onClick={() => setShowInteractionCheck(true)}
                 disabled={medications.filter(m => !m.isFolder).length < 2}
@@ -679,7 +698,9 @@ const App: React.FC = () => {
       </main>
 
       <BottomNav currentView={view} onChange={setView} />
-      
+
+      {showOnboarding && <OnboardingOverlay onFinish={handleFinishOnboarding} />}
+
       {showReminderOverlay && (
         <ReminderOverlay 
           reminderTime={reminderSettings.time}
