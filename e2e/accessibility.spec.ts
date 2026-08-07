@@ -61,4 +61,29 @@ test.describe('accessibility @a11y', () => {
     const violations = await scan(page);
     expect(violations, formatViolations(violations)).toEqual([]);
   });
+
+  test('the AI scan review screen has no detectable a11y violations', async ({ page }) => {
+    await page.route('**generativelanguage.googleapis.com/**', async route => {
+      const payload = [{ title: 'スキャン薬A', dosage: 1, unit: '錠', label: '朝食後', memo: '', stock: 10 }];
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(payload) }] } }] }),
+      });
+    });
+
+    await page.goto('/');
+    await page.getByRole('button', { name: '追加' }).click();
+    await page.getByText('手帳スキャン').click();
+    await page.locator('input[type="file"][multiple]').setInputFiles({
+      name: 'page1.jpg',
+      mimeType: 'image/jpeg',
+      buffer: Buffer.from('fake-image-data'),
+    });
+    await page.getByText('1枚をまとめて解析する').click();
+    await expect(page.getByRole('heading', { name: 'スキャン結果を確認' })).toBeVisible();
+
+    const violations = await scan(page);
+    expect(violations, formatViolations(violations)).toEqual([]);
+  });
 });

@@ -4,6 +4,7 @@ import { format, subDays } from 'date-fns';
 import { BottomNav } from './components/BottomNav';
 import { MedicationForm } from './components/MedicationForm';
 import { CameraModal } from './components/CameraModal';
+import { ScanReviewModal } from './components/ScanReviewModal';
 import { QuickLogSheet } from './components/QuickLogSheet';
 import { InteractionCheckModal } from './components/InteractionCheckModal';
 import { AccountPanel } from './components/AccountPanel';
@@ -63,6 +64,7 @@ const App: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanDrafts, setScanDrafts] = useState<Medication[] | null>(null);
 
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [pushStatus, setPushStatus] = useState<string | null>(null);
@@ -448,23 +450,22 @@ const App: React.FC = () => {
       const jsonStr = response.text?.trim();
       if (jsonStr) {
         const results = JSON.parse(jsonStr);
-        if (Array.isArray(results)) {
-          results.forEach(res => {
-            const newMed: Medication = {
-              id: crypto.randomUUID(),
-              title: res.title || '不明なお薬',
-              dosage: res.dosage || 1,
-              unit: (UNITS.includes(res.unit as any) ? res.unit : '錠') as any,
-              label: (LABELS.includes(res.label as any) ? res.label : '朝食後') as any,
-              stock: res.stock || 0,
-              memo: res.memo || '',
-              color: 'emerald',
-              startDate: Date.now(),
-              isFolder: false,
-            };
-            setMedications(prev => [...prev, newMed]);
-            addGlobalLog('scan', newMed.title, 'AIスキャンにより追加しました');
-          });
+        if (Array.isArray(results) && results.length > 0) {
+          const drafts: Medication[] = results.map(res => ({
+            id: crypto.randomUUID(),
+            title: res.title || '不明なお薬',
+            dosage: res.dosage || 1,
+            unit: (UNITS.includes(res.unit as any) ? res.unit : '錠') as any,
+            label: (LABELS.includes(res.label as any) ? res.label : '朝食後') as any,
+            stock: res.stock || 0,
+            memo: res.memo || '',
+            color: 'emerald',
+            startDate: Date.now(),
+            isFolder: false,
+          }));
+          setScanDrafts(drafts);
+        } else {
+          alert("お薬の情報を読み取れませんでした。手動で入力してください。");
         }
       }
     } catch (error) {
@@ -473,6 +474,12 @@ const App: React.FC = () => {
     } finally {
       setIsScanning(false);
     }
+  };
+
+  const handleConfirmScanReview = (meds: Medication[]) => {
+    setMedications(prev => [...prev, ...meds]);
+    meds.forEach(med => addGlobalLog('scan', med.title, 'AIスキャンにより追加しました'));
+    setScanDrafts(null);
   };
 
   return (
@@ -685,6 +692,14 @@ const App: React.FC = () => {
           <Loader2 size={48} className="animate-spin mb-4 text-emerald-400" />
           <p className="font-bold tracking-widest uppercase text-xs">AI Scanning...</p>
         </div>
+      )}
+
+      {scanDrafts && (
+        <ScanReviewModal
+          drafts={scanDrafts}
+          onConfirm={handleConfirmScanReview}
+          onCancel={() => setScanDrafts(null)}
+        />
       )}
 
       {isFormOpen && (
