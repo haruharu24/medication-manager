@@ -1,9 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { format, subDays } from 'date-fns';
 import { BottomNav } from './components/BottomNav';
 import { MedicationForm } from './components/MedicationForm';
 import { CameraModal } from './components/CameraModal';
+import { QuickLogSheet } from './components/QuickLogSheet';
 import { Medication, MedicationLog, ViewMode, DailyCondition, GlobalActionLog, ReportConfig, ReminderSettings } from './types';
 import { UNITS, LABELS } from './constants';
 import { HomeView } from './features/home/HomeView';
@@ -11,9 +12,12 @@ import { MedicationListView } from './features/meds/MedicationListView';
 import { ReportSetupView } from './features/report/ReportSetupView';
 import { ReportPreviewView } from './features/report/ReportPreviewView';
 import { ReminderOverlay } from './components/ReminderOverlay';
-import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock } from 'lucide-react';
+import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle } from 'lucide-react';
 // Fix: Import GoogleGenAI and Type for AI-powered scanning
 import { GoogleGenAI, Type } from "@google/genai";
+import { markMedicationTaken } from './utils/medicationActions';
+import { drainPendingActions, PendingAction } from './utils/pendingActionsDb';
+import { registerServiceWorker, subscribeToPush, unsubscribeFromPush } from './utils/push';
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>('home');
@@ -43,6 +47,15 @@ const App: React.FC = () => {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
 
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [pushStatus, setPushStatus] = useState<string | null>(null);
+  const [showQuickLog, setShowQuickLog] = useState(false);
+
+  // Keeps the pending-action drain logic (which can fire from a service worker
+  // "message" event at any time) reading fresh state instead of a stale closure.
+  const stateRef = useRef({ logs, medications });
+  useEffect(() => { stateRef.current = { logs, medications }; }, [logs, medications]);
+
   useEffect(() => {
     try {
       const load = (key: string) => JSON.parse(localStorage.getItem(key) || '[]');
@@ -50,22 +63,24 @@ const App: React.FC = () => {
       setLogs(load('logs'));
       setGlobalLogs(load('globalLogs'));
       setConditions(load('conditions'));
-      
+
       const savedReminder = localStorage.getItem('reminderSettings');
       if (savedReminder) {
         const settings: ReminderSettings = JSON.parse(savedReminder);
         setReminderSettings(settings);
-        
+
         // Check if we should show the reminder overlay
         const today = format(new Date(), 'yyyy-MM-dd');
         const now = format(new Date(), 'HH:mm');
-        
+
         if (settings.enabled && settings.lastCheckedDate !== today && now >= settings.time) {
           setShowReminderOverlay(true);
         }
       }
     } catch (e) {
       console.error("Failed to load local storage", e);
+    } finally {
+      setSettingsLoaded(true);
     }
   }, []);
 
@@ -80,6 +95,107 @@ const App: React.FC = () => {
   const addGlobalLog = (type: GlobalActionLog['type'], title: string, details?: string) => {
     const newLog: GlobalActionLog = { id: crypto.randomUUID(), timestamp: Date.now(), type, title, details };
     setGlobalLogs(prev => [newLog, ...prev].slice(0, 100));
+  };
+
+  // Applies "take" actions recorded outside the app (notification tap, quick-record
+  // shortcut) to the normal logs/medications state. 'ALL' marks every non-folder
+  // medication for that day, used by the notification's bulk "飲んだ" action.
+  const applyPendingActions = useCallback((actions: PendingAction[]) => {
+    if (actions.length === 0) return;
+    let { logs: logsAcc, medications: medsAcc } = stateRef.current;
+
+    actions
+      .slice()
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .forEach(action => {
+        const targets = action.medicationId === 'ALL'
+          ? medsAcc.filter(m => !m.isFolder).map(m => m.id)
+          : [action.medicationId];
+        targets.forEach(medId => {
+          const result = markMedicationTaken(logsAcc, medsAcc, medId, action.dateStr);
+          logsAcc = result.logs;
+          medsAcc = result.medications;
+        });
+      });
+
+    setLogs(logsAcc);
+    setMedications(medsAcc);
+    stateRef.current = { logs: logsAcc, medications: medsAcc };
+    addGlobalLog('update', '通知・ショートカットからの記録', `${actions.length}件を反映しました`);
+  }, []);
+
+  const drainAndApply = useCallback(async () => {
+    const actions = await drainPendingActions();
+    applyPendingActions(actions);
+  }, [applyPendingActions]);
+
+  // Register the service worker once, and apply any dose already recorded from a
+  // notification tap while the app itself was closed.
+  useEffect(() => {
+    registerServiceWorker();
+
+    if (!('serviceWorker' in navigator)) return;
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'pending-actions-updated') {
+        drainAndApply();
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
+  }, [drainAndApply]);
+
+  useEffect(() => {
+    if (settingsLoaded) {
+      drainAndApply();
+    }
+  }, [settingsLoaded, drainAndApply]);
+
+  // Keep the backend's push subscription in sync with the reminder toggle/time.
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    if (reminderSettings.enabled) {
+      subscribeToPush(reminderSettings.time).then(result => {
+        setPushStatus(result.ok ? null : (result.reason || '通知の登録に失敗しました'));
+      });
+    } else {
+      unsubscribeFromPush();
+      setPushStatus(null);
+    }
+  }, [reminderSettings.enabled, reminderSettings.time, settingsLoaded]);
+
+  // "今すぐ服薬を記録" manifest shortcut (/?quickAction=log) opens straight into the
+  // quick-record sheet for people who don't want to go through the calendar edit flow.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('quickAction') === 'log') {
+      setShowQuickLog(true);
+      params.delete('quickAction');
+      const query = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (query ? `?${query}` : '') + window.location.hash);
+    }
+  }, []);
+
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+
+  const handleQuickTake = (medId: string) => {
+    const result = markMedicationTaken(logs, medications, medId, todayStr);
+    if (result.changed) {
+      setLogs(result.logs);
+      setMedications(result.medications);
+    }
+  };
+
+  const handleQuickTakeAll = () => {
+    let logsAcc = logs;
+    let medsAcc = medications;
+    medications.filter(m => !m.isFolder).forEach(m => {
+      const result = markMedicationTaken(logsAcc, medsAcc, m.id, todayStr);
+      logsAcc = result.logs;
+      medsAcc = result.medications;
+    });
+    setLogs(logsAcc);
+    setMedications(medsAcc);
+    setShowQuickLog(false);
   };
 
   const handleSaveMed = (med: Medication) => {
@@ -224,12 +340,19 @@ const App: React.FC = () => {
                   <div className="flex items-center gap-3 pt-2 border-t border-slate-50">
                     <Clock size={16} className="text-slate-400" />
                     <span className="text-sm font-bold text-slate-600">開始時間:</span>
-                    <input 
-                      type="time" 
+                    <input
+                      type="time"
                       value={reminderSettings.time}
                       onChange={(e) => setReminderSettings(prev => ({ ...prev, time: e.target.value }))}
                       className="bg-slate-50 border-none rounded-lg px-3 py-1 font-black text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
                     />
+                  </div>
+                )}
+
+                {reminderSettings.enabled && pushStatus && (
+                  <div className="flex items-start gap-2 pt-2 border-t border-slate-50 text-amber-600">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                    <p className="text-[11px] font-bold leading-tight">{pushStatus}(アプリを開いている間の通知チェックのみ有効です)</p>
                   </div>
                 )}
               </div>
@@ -258,6 +381,17 @@ const App: React.FC = () => {
             setReminderSettings(prev => ({ ...prev, lastCheckedDate: format(new Date(), 'yyyy-MM-dd') }));
             setShowReminderOverlay(false);
           }}
+        />
+      )}
+
+      {showQuickLog && (
+        <QuickLogSheet
+          medications={medications}
+          logs={logs}
+          dateStr={todayStr}
+          onTake={handleQuickTake}
+          onTakeAll={handleQuickTakeAll}
+          onClose={() => setShowQuickLog(false)}
         />
       )}
 

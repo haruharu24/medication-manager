@@ -1,0 +1,41 @@
+{
+  "name": "MediMate 服薬管理",
+  "short_name": "MediMate",
+  "description": "服薬記録・在庫管理・リマインダーができる服薬管理アプリ",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#e2e8f0",
+  "theme_color": "#059669",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "今すぐ服薬を記録",
+      "short_name": "記録",
+      "description": "アプリを開いてすぐに服薬を記録する",
+      "url": "/?quickAction=log",
+      "icons": [
+        {
+          "src": "/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ]
+}

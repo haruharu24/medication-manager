@@ -6,6 +6,7 @@ import { Plus, Camera, FileText, Check, Edit3, Save, ChevronLeft, ChevronRight }
 import { HealthCard } from '../../components/HealthCard';
 import { Medication, MedicationLog, DailyCondition, CalendarMode } from '../../types';
 import { WEEK_DAYS } from '../../constants';
+import { isMedicationTaken, toggleMedicationTaken } from '../../utils/medicationActions';
 
 interface HomeViewProps {
   medications: Medication[];
@@ -41,24 +42,17 @@ export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, 
 
   const isCompleted = (medId: string, date: Date) => {
     const dStr = format(date, 'yyyy-MM-dd');
-    return logs.some(l => l.medicationId === medId && l.dateStr === dStr);
+    return isMedicationTaken(logs, medId, dStr);
   };
 
   const toggleComplete = (medId: string) => {
-    if (!isEditMode) return; 
+    if (!isEditMode) return;
 
     const dStr = format(selectedDate, 'yyyy-MM-dd');
-    const existing = logs.find(l => l.medicationId === medId && l.dateStr === dStr);
-    const med = medications.find(m => m.id === medId);
-    if (!med) return;
-
-    if (existing) {
-      setLogs(prev => prev.filter(l => l.id !== existing.id));
-      setMedications(prev => prev.map(m => m.id === medId ? { ...m, stock: m.stock + m.dosage } : m));
-    } else {
-      setLogs(prev => [...prev, { id: crypto.randomUUID(), medicationId: medId, timestamp: Date.now(), dateStr: dStr }]);
-      setMedications(prev => prev.map(m => m.id === medId ? { ...m, stock: Math.max(0, m.stock - m.dosage) } : m));
-    }
+    const result = toggleMedicationTaken(logs, medications, medId, dStr);
+    if (!result.changed) return;
+    setLogs(result.logs);
+    setMedications(result.medications);
   };
 
   const handleDateSelect = (day: Date) => {
