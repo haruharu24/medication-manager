@@ -14,6 +14,7 @@ import {
   fetchMembers,
   fetchHouseholdData,
   pushHouseholdData,
+  updateMemberRole,
   connectHouseholdSocket,
 } from './household';
 
@@ -65,6 +66,16 @@ describe('household API wrappers', () => {
       '/api/households/h1/data',
     ]);
   });
+
+  it('updateMemberRole POSTs the new role to the member-specific URL', async () => {
+    mockedApiRequest.mockResolvedValue({ members: [] });
+    await updateMemberRole('tok', 'h1', 'u2', 'viewer');
+    expect(mockedApiRequest).toHaveBeenCalledWith('/api/households/h1/members/u2/role', {
+      method: 'POST',
+      token: 'tok',
+      body: { role: 'viewer' },
+    });
+  });
 });
 
 class MockWebSocket {
@@ -95,26 +106,39 @@ describe('connectHouseholdSocket', () => {
   });
 
   it('sends a join message once connected', () => {
-    connectHouseholdSocket('tok', 'h1', vi.fn());
+    connectHouseholdSocket('tok', 'h1', { onDataUpdated: vi.fn(), onMembersUpdated: vi.fn() });
     const ws = MockWebSocket.instances[0];
     ws.onopen?.();
     expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'join', token: 'tok', householdId: 'h1' }));
   });
 
-  it('invokes onUpdate when a data-updated message arrives', () => {
-    const onUpdate = vi.fn();
-    connectHouseholdSocket('tok', 'h1', onUpdate);
+  it('invokes onDataUpdated when a data-updated message arrives', () => {
+    const onDataUpdated = vi.fn();
+    const onMembersUpdated = vi.fn();
+    connectHouseholdSocket('tok', 'h1', { onDataUpdated, onMembersUpdated });
     const ws = MockWebSocket.instances[0];
 
     ws.onmessage?.({ data: JSON.stringify({ type: 'data-updated', updatedAt: 'now' }) });
-    expect(onUpdate).toHaveBeenCalledTimes(1);
+    expect(onDataUpdated).toHaveBeenCalledTimes(1);
+    expect(onMembersUpdated).not.toHaveBeenCalled();
 
     ws.onmessage?.({ data: JSON.stringify({ type: 'joined' }) });
-    expect(onUpdate).toHaveBeenCalledTimes(1); // unrelated message types are ignored
+    expect(onDataUpdated).toHaveBeenCalledTimes(1); // unrelated message types are ignored
+  });
+
+  it('invokes onMembersUpdated when a members-updated message arrives', () => {
+    const onDataUpdated = vi.fn();
+    const onMembersUpdated = vi.fn();
+    connectHouseholdSocket('tok', 'h1', { onDataUpdated, onMembersUpdated });
+    const ws = MockWebSocket.instances[0];
+
+    ws.onmessage?.({ data: JSON.stringify({ type: 'members-updated' }) });
+    expect(onMembersUpdated).toHaveBeenCalledTimes(1);
+    expect(onDataUpdated).not.toHaveBeenCalled();
   });
 
   it('reconnects after an unexpected close, but stops once the cleanup function is called', () => {
-    const disconnect = connectHouseholdSocket('tok', 'h1', vi.fn());
+    const disconnect = connectHouseholdSocket('tok', 'h1', { onDataUpdated: vi.fn(), onMembersUpdated: vi.fn() });
     expect(MockWebSocket.instances).toHaveLength(1);
 
     // Unexpected close (server restart, network blip) -> auto-reconnect after 3s.

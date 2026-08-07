@@ -3,8 +3,14 @@ import { test, expect } from '@playwright/test';
 test.describe('family sharing (household sync)', () => {
   test('a medication added on one device appears on another via real-time sync', async ({ browser }) => {
     const suffix = Date.now();
+    // browser.newContext() doesn't inherit the project's default storageState
+    // (that only applies to the auto-created `page`/`context` fixtures), so the
+    // onboarding-dismissed flag has to be seeded here too, or the first-run
+    // onboarding overlay would block every click below.
     const ctxA = await browser.newContext();
     const ctxB = await browser.newContext();
+    await ctxA.addInitScript(() => window.localStorage.setItem('onboardingCompleted', 'true'));
+    await ctxB.addInitScript(() => window.localStorage.setItem('onboardingCompleted', 'true'));
     const pageA = await ctxA.newPage();
     const pageB = await ctxB.newPage();
 

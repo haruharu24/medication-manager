@@ -10,8 +10,8 @@ import {
   upsertSubscription,
   removeSubscription,
   getAllSubscriptions,
-  markSent,
-  setSnooze,
+  markReminderSent,
+  setReminderSnooze,
 } from './store.js';
 import { hashPassword, verifyPassword, signToken, requireAuth } from './auth.js';
 import {
@@ -26,6 +26,8 @@ import {
   getHouseholdMembers,
   getHouseholdData,
   setHouseholdData,
+  getMemberRole,
+  setMemberRole,
 } from './accountStore.js';
 
 const PORT = process.env.PORT || 8787;
@@ -63,12 +65,18 @@ app.get('/api/vapid-public-key', (req, res) => {
   res.json({ publicKey: VAPID_PUBLIC_KEY });
 });
 
+// A subscription can carry several reminders: one global daily reminder (id
+// 'ALL') plus one per medication that has its own notification time set, so a
+// single device can be pushed at multiple times a day.
 app.post('/api/subscribe', (req, res) => {
-  const { subscription, reminderTime, timezoneOffsetMinutes } = req.body || {};
-  if (!subscription?.endpoint || !reminderTime) {
-    return res.status(400).json({ error: 'subscription and reminderTime are required' });
+  const { subscription, reminders, timezoneOffsetMinutes } = req.body || {};
+  const validReminders = Array.isArray(reminders)
+    ? reminders.filter((r) => r && r.id && r.time)
+    : [];
+  if (!subscription?.endpoint || validReminders.length === 0) {
+    return res.status(400).json({ error: 'subscription and at least one reminder are required' });
   }
-  upsertSubscription({ subscription, reminderTime, timezoneOffsetMinutes: timezoneOffsetMinutes ?? 0 });
+  upsertSubscription({ subscription, reminders: validReminders, timezoneOffsetMinutes: timezoneOffsetMinutes ?? 0 });
   res.json({ ok: true });
 });
 
@@ -80,9 +88,9 @@ app.post('/api/unsubscribe', (req, res) => {
 });
 
 app.post('/api/snooze', (req, res) => {
-  const { endpoint, minutes } = req.body || {};
-  if (!endpoint) return res.status(400).json({ error: 'endpoint is required' });
-  setSnooze(endpoint, Date.now() + (Number(minutes) || 15) * 60 * 1000);
+  const { endpoint, reminderId, minutes } = req.body || {};
+  if (!endpoint || !reminderId) return res.status(400).json({ error: 'endpoint and reminderId are required' });
+  setReminderSnooze(endpoint, reminderId, Date.now() + (Number(minutes) || 15) * 60 * 1000);
   res.json({ ok: true });
 });
 
@@ -145,8 +153,40 @@ const requireMembership = (req, res, next) => {
   next();
 };
 
+// 'viewer' members can read shared data but not write it — used on the data PUT
+// and on the role-management endpoint (only the owner may change roles).
+const requireEditor = (req, res, next) => {
+  const role = getMemberRole(req.params.id, req.user.id);
+  if (role === 'viewer') return res.status(403).json({ error: '閲覧のみのメンバーは変更できません' });
+  next();
+};
+
+const requireOwner = (req, res, next) => {
+  const household = getHouseholdById(req.params.id);
+  if (household?.ownerId !== req.user.id) return res.status(403).json({ error: 'オーナーのみ操作できます' });
+  next();
+};
+
 app.get('/api/households/:id/members', requireAuth, requireMembership, (req, res) => {
   res.json({ members: getHouseholdMembers(req.params.id) });
+});
+
+app.post('/api/households/:id/members/:userId/role', requireAuth, requireMembership, requireOwner, (req, res) => {
+  const { role } = req.body || {};
+  try {
+    setMemberRole({ householdId: req.params.id, userId: req.params.userId, role });
+    const members = getHouseholdMembers(req.params.id);
+    // Role changes (unlike ordinary data edits) should take effect immediately for
+    // the affected member — e.g. a demotion to viewer should disable their write
+    // access right away, not just on their next reload.
+    broadcastToHousehold(req.params.id, { type: 'members-updated' });
+    res.json({ members });
+  } catch (e) {
+    if (e.message === 'INVALID_ROLE') return res.status(400).json({ error: 'roleは editor か viewer を指定してください' });
+    if (e.message === 'NOT_A_MEMBER') return res.status(404).json({ error: 'そのメンバーは見つかりません' });
+    if (e.message === 'CANNOT_CHANGE_OWNER_ROLE') return res.status(400).json({ error: 'オーナーの権限は変更できません' });
+    res.status(500).json({ error: '権限の変更に失敗しました' });
+  }
 });
 
 app.post('/api/households/:id/leave', requireAuth, requireMembership, (req, res) => {
@@ -158,7 +198,7 @@ app.get('/api/households/:id/data', requireAuth, requireMembership, (req, res) =
   res.json(getHouseholdData(req.params.id) || { data: null, updatedAt: null });
 });
 
-app.put('/api/households/:id/data', requireAuth, requireMembership, (req, res) => {
+app.put('/api/households/:id/data', requireAuth, requireMembership, requireEditor, (req, res) => {
   const { data } = req.body || {};
   if (!data) return res.status(400).json({ error: 'data is required' });
   const entry = setHouseholdData(req.params.id, data);
@@ -166,18 +206,21 @@ app.put('/api/households/:id/data', requireAuth, requireMembership, (req, res) =
   res.json({ updatedAt: entry.updatedAt });
 });
 
-const buildPayload = (endpoint) => ({
-  title: '服薬リマインダー',
-  body: 'お薬を飲む時間です。通知から記録できます。',
+const buildPayload = (endpoint, reminder) => ({
+  title: reminder.medicationId === 'ALL' ? '服薬リマインダー' : reminder.title,
+  body: reminder.medicationId === 'ALL'
+    ? 'お薬を飲む時間です。通知から記録できます。'
+    : `「${reminder.title}」を飲む時間です。通知から記録できます。`,
   dateStr: new Date().toISOString().slice(0, 10),
-  medicationId: 'ALL',
+  medicationId: reminder.medicationId,
+  reminderId: reminder.id,
   endpoint,
   snoozeUrl: `${PUBLIC_SERVER_URL}/api/snooze`,
 });
 
-const sendReminder = async (sub) => {
+const sendReminder = async (sub, reminder) => {
   try {
-    await webpush.sendNotification(sub.subscription, JSON.stringify(buildPayload(sub.subscription.endpoint)));
+    await webpush.sendNotification(sub.subscription, JSON.stringify(buildPayload(sub.subscription.endpoint, reminder)));
   } catch (err) {
     if (err.statusCode === 404 || err.statusCode === 410) {
       // Subscription is gone (browser data cleared, uninstalled, etc.) — stop tracking it.
@@ -188,30 +231,34 @@ const sendReminder = async (sub) => {
   }
 };
 
-// Every minute: fire the daily reminder for any subscription whose local time
-// matches its configured reminderTime, and deliver any snooze that just came due.
+// Every minute: fire each reminder on each subscription whose local time matches
+// its configured time, and deliver any snooze that just came due. A subscription
+// can hold several reminders (the daily catch-all plus per-medication times), so
+// each is tracked and fired independently.
 const cronTask = cron.schedule('* * * * *', async () => {
   const now = Date.now();
   const subs = getAllSubscriptions();
 
   for (const sub of subs) {
-    if (sub.snoozeUntil) {
-      if (sub.snoozeUntil <= now) {
-        setSnooze(sub.subscription.endpoint, null);
-        await sendReminder(sub);
-      }
-      continue;
-    }
-
     // subscription.timezoneOffsetMinutes follows Date.prototype.getTimezoneOffset():
     // localMs = utcMs - offsetMinutes * 60000
     const localDate = new Date(now - sub.timezoneOffsetMinutes * 60 * 1000);
     const localTime = `${String(localDate.getUTCHours()).padStart(2, '0')}:${String(localDate.getUTCMinutes()).padStart(2, '0')}`;
     const localDateStr = localDate.toISOString().slice(0, 10);
 
-    if (localTime === sub.reminderTime && sub.lastSentDate !== localDateStr) {
-      markSent(sub.subscription.endpoint, localDateStr);
-      await sendReminder(sub);
+    for (const reminder of sub.reminders) {
+      if (reminder.snoozeUntil) {
+        if (reminder.snoozeUntil <= now) {
+          markReminderSent(sub.subscription.endpoint, reminder.id, localDateStr);
+          await sendReminder(sub, reminder);
+        }
+        continue;
+      }
+
+      if (localTime === reminder.time && reminder.lastSentDate !== localDateStr) {
+        markReminderSent(sub.subscription.endpoint, reminder.id, localDateStr);
+        await sendReminder(sub, reminder);
+      }
     }
   }
 });

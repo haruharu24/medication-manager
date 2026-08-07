@@ -78,6 +78,59 @@ describe('households', () => {
   });
 });
 
+describe('member roles', () => {
+  it('the creator is "owner" and a joiner defaults to "editor"', () => {
+    const owner = store.createUser({ email: 'role-owner@example.com', passwordHash: 'hash' });
+    const joiner = store.createUser({ email: 'role-joiner@example.com', passwordHash: 'hash' });
+    const household = store.createHousehold({ name: '世帯', ownerId: owner.id });
+    store.joinHouseholdByInviteCode({ inviteCode: household.inviteCode, userId: joiner.id });
+
+    expect(store.getMemberRole(household.id, owner.id)).toBe('owner');
+    expect(store.getMemberRole(household.id, joiner.id)).toBe('editor');
+
+    const members = store.getHouseholdMembers(household.id);
+    expect(members.find(m => m.userId === owner.id).role).toBe('owner');
+    expect(members.find(m => m.userId === joiner.id).role).toBe('editor');
+  });
+
+  it('setMemberRole changes a non-owner member to viewer and back', () => {
+    const owner = store.createUser({ email: 'role-owner2@example.com', passwordHash: 'hash' });
+    const joiner = store.createUser({ email: 'role-joiner2@example.com', passwordHash: 'hash' });
+    const household = store.createHousehold({ name: '世帯', ownerId: owner.id });
+    store.joinHouseholdByInviteCode({ inviteCode: household.inviteCode, userId: joiner.id });
+
+    store.setMemberRole({ householdId: household.id, userId: joiner.id, role: 'viewer' });
+    expect(store.getMemberRole(household.id, joiner.id)).toBe('viewer');
+
+    store.setMemberRole({ householdId: household.id, userId: joiner.id, role: 'editor' });
+    expect(store.getMemberRole(household.id, joiner.id)).toBe('editor');
+  });
+
+  it('refuses to change the owner\'s role', () => {
+    const owner = store.createUser({ email: 'role-owner3@example.com', passwordHash: 'hash' });
+    const household = store.createHousehold({ name: '世帯', ownerId: owner.id });
+
+    expect(() => store.setMemberRole({ householdId: household.id, userId: owner.id, role: 'viewer' }))
+      .toThrow('CANNOT_CHANGE_OWNER_ROLE');
+  });
+
+  it('rejects an invalid role value', () => {
+    const owner = store.createUser({ email: 'role-owner4@example.com', passwordHash: 'hash' });
+    const joiner = store.createUser({ email: 'role-joiner4@example.com', passwordHash: 'hash' });
+    const household = store.createHousehold({ name: '世帯', ownerId: owner.id });
+    store.joinHouseholdByInviteCode({ inviteCode: household.inviteCode, userId: joiner.id });
+
+    expect(() => store.setMemberRole({ householdId: household.id, userId: joiner.id, role: 'admin' }))
+      .toThrow('INVALID_ROLE');
+  });
+
+  it('getMemberRole returns null for a non-member', () => {
+    const owner = store.createUser({ email: 'role-owner5@example.com', passwordHash: 'hash' });
+    const household = store.createHousehold({ name: '世帯', ownerId: owner.id });
+    expect(store.getMemberRole(household.id, 'nobody')).toBeNull();
+  });
+});
+
 describe('household data sync', () => {
   it('returns null before any data has been pushed', () => {
     const owner = store.createUser({ email: 'sync-owner@example.com', passwordHash: 'hash' });

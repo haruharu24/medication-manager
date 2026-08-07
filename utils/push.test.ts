@@ -11,8 +11,13 @@ describe('push helpers on an unsupported browser', () => {
   });
 
   it('subscribeToPush reports the feature as unsupported without throwing', async () => {
-    const result = await subscribeToPush('08:00');
+    const result = await subscribeToPush([{ id: 'ALL', medicationId: 'ALL', title: '服薬リマインダー', time: '08:00' }]);
     expect(result).toEqual({ ok: false, reason: 'このブラウザは通知に対応していません' });
+  });
+
+  it('subscribeToPush rejects an empty reminder list before touching browser APIs', async () => {
+    const result = await subscribeToPush([]);
+    expect(result).toEqual({ ok: false, reason: '通知するリマインダーがありません' });
   });
 
   it('unsubscribeFromPush resolves without throwing', async () => {

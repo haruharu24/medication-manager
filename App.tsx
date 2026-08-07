@@ -1,9 +1,10 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { format, subDays } from 'date-fns';
 import { BottomNav } from './components/BottomNav';
 import { MedicationForm } from './components/MedicationForm';
 import { CameraModal } from './components/CameraModal';
+import { ScanReviewModal } from './components/ScanReviewModal';
 import { QuickLogSheet } from './components/QuickLogSheet';
 import { InteractionCheckModal } from './components/InteractionCheckModal';
 import { AccountPanel } from './components/AccountPanel';
@@ -14,12 +15,14 @@ import { MedicationListView } from './features/meds/MedicationListView';
 import { ReportSetupView } from './features/report/ReportSetupView';
 import { ReportPreviewView } from './features/report/ReportPreviewView';
 import { ReminderOverlay } from './components/ReminderOverlay';
-import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload, ShieldAlert, Moon, Sun } from 'lucide-react';
+import { OnboardingOverlay } from './components/OnboardingOverlay';
+import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload, ShieldAlert, Moon, Sun, HelpCircle } from 'lucide-react';
 // Fix: Import GoogleGenAI and Type for AI-powered scanning
 import { GoogleGenAI, Type } from "@google/genai";
 import { markMedicationTaken } from './utils/medicationActions';
 import { drainPendingActions, PendingAction } from './utils/pendingActionsDb';
-import { registerServiceWorker, subscribeToPush, unsubscribeFromPush } from './utils/push';
+import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, PushReminder } from './utils/push';
+import { useI18n } from './i18n';
 import { buildBackup, downloadBackup, parseBackupFile } from './utils/backup';
 import { Theme, getStoredTheme, applyTheme } from './utils/theme';
 import { StoredAuth, getStoredAuth, clearStoredAuth, login as apiLogin, register as apiRegister } from './utils/auth';
@@ -33,10 +36,12 @@ import {
   fetchMembers,
   fetchHouseholdData,
   pushHouseholdData,
+  updateMemberRole as apiUpdateMemberRole,
   connectHouseholdSocket,
 } from './utils/household';
 
 const App: React.FC = () => {
+  const { t, language, setLanguage } = useI18n();
   const [view, setView] = useState<ViewMode>('home');
   const [medications, setMedications] = useState<Medication[]>([]);
   const [logs, setLogs] = useState<MedicationLog[]>([]);
@@ -50,6 +55,7 @@ const App: React.FC = () => {
   });
 
   const [showReminderOverlay, setShowReminderOverlay] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const [reportConfig, setReportConfig] = useState<ReportConfig>({
     start: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
@@ -63,6 +69,7 @@ const App: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanDrafts, setScanDrafts] = useState<Medication[] | null>(null);
 
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [pushStatus, setPushStatus] = useState<string | null>(null);
@@ -83,6 +90,10 @@ const App: React.FC = () => {
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
+  // 'viewer' members can read the household's shared data but not write it (the
+  // server rejects the PUT too — this just avoids pointless failed requests and
+  // the confusing "edit that silently reverts" UX that would follow).
+  const isViewer = householdMembers.find(m => m.userId === auth?.user.id)?.role === 'viewer';
 
   const setActiveHouseholdId = (id: string | null) => {
     setActiveHouseholdIdState(id);
@@ -140,7 +151,7 @@ const App: React.FC = () => {
         if (cancelled) return;
         if (updatedAt && data) {
           applyRemoteData(data);
-        } else {
+        } else if (!isViewer) {
           await pushHouseholdData(auth.token, activeHouseholdId, { medications, logs, globalLogs, conditions });
         }
         if (!cancelled) { setSyncStatus('synced'); setSyncError(null); }
@@ -151,10 +162,15 @@ const App: React.FC = () => {
       }
     })();
 
-    const disconnect = connectHouseholdSocket(auth.token, activeHouseholdId, () => {
-      fetchHouseholdData(auth.token, activeHouseholdId)
-        .then(({ data, updatedAt }) => { if (updatedAt && data) applyRemoteData(data); })
-        .catch(() => {});
+    const disconnect = connectHouseholdSocket(auth.token, activeHouseholdId, {
+      onDataUpdated: () => {
+        fetchHouseholdData(auth.token, activeHouseholdId)
+          .then(({ data, updatedAt }) => { if (updatedAt && data) applyRemoteData(data); })
+          .catch(() => {});
+      },
+      onMembersUpdated: () => {
+        fetchMembers(auth.token, activeHouseholdId).then(res => setHouseholdMembers(res.members)).catch(() => {});
+      },
     });
 
     return () => { cancelled = true; disconnect(); };
@@ -163,7 +179,7 @@ const App: React.FC = () => {
 
   // Push local changes to the shared household data after a short quiet period.
   useEffect(() => {
-    if (!settingsLoaded || !auth || !activeHouseholdId || !initialSyncDoneRef.current) return;
+    if (!settingsLoaded || !auth || !activeHouseholdId || !initialSyncDoneRef.current || isViewer) return;
     if (suppressNextPushRef.current) { suppressNextPushRef.current = false; return; }
 
     const timer = setTimeout(() => {
@@ -174,7 +190,7 @@ const App: React.FC = () => {
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [medications, logs, globalLogs, conditions, settingsLoaded, auth, activeHouseholdId]);
+  }, [medications, logs, globalLogs, conditions, settingsLoaded, auth, activeHouseholdId, isViewer]);
 
   const handleLogin = async (email: string, password: string) => { setAuth(await apiLogin(email, password)); };
   const handleRegister = async (email: string, password: string) => { setAuth(await apiRegister(email, password)); };
@@ -206,6 +222,12 @@ const App: React.FC = () => {
     setSyncStatus('idle');
   };
 
+  const handleUpdateMemberRole = async (userId: string, role: 'editor' | 'viewer') => {
+    if (!auth || !activeHouseholdId) return;
+    const { members } = await apiUpdateMemberRole(auth.token, activeHouseholdId, userId, role);
+    setHouseholdMembers(members);
+  };
+
   // Keeps the pending-action drain logic (which can fire from a service worker
   // "message" event at any time) reading fresh state instead of a stale closure.
   const stateRef = useRef({ logs, medications });
@@ -232,12 +254,21 @@ const App: React.FC = () => {
           setShowReminderOverlay(true);
         }
       }
+
+      if (localStorage.getItem('onboardingCompleted') !== 'true') {
+        setShowOnboarding(true);
+      }
     } catch (e) {
       console.error("Failed to load local storage", e);
     } finally {
       setSettingsLoaded(true);
     }
   }, []);
+
+  const handleFinishOnboarding = () => {
+    localStorage.setItem('onboardingCompleted', 'true');
+    setShowOnboarding(false);
+  };
 
   useEffect(() => {
     // Guard against writing back the pre-load default state (empty arrays) over
@@ -310,18 +341,33 @@ const App: React.FC = () => {
     }
   }, [settingsLoaded, drainAndApply]);
 
-  // Keep the backend's push subscription in sync with the reminder toggle/time.
+  // One daily catch-all reminder (the global 強制リマインド time) plus one reminder
+  // per medication that has its own notification time set.
+  const activeReminders = useMemo<PushReminder[]>(() => {
+    const medReminders: PushReminder[] = medications
+      .filter(m => !m.isFolder && m.notificationTime)
+      .map(m => ({ id: m.id, medicationId: m.id, title: m.title, time: m.notificationTime as string }));
+    return [
+      { id: 'ALL', medicationId: 'ALL', title: '服薬リマインダー', time: reminderSettings.time },
+      ...medReminders,
+    ];
+  }, [medications, reminderSettings.time]);
+  const remindersKey = useMemo(() => JSON.stringify(activeReminders), [activeReminders]);
+
+  // Keep the backend's push subscription in sync with the reminder toggle/time and
+  // with each medication's own notification time.
   useEffect(() => {
     if (!settingsLoaded) return;
     if (reminderSettings.enabled) {
-      subscribeToPush(reminderSettings.time).then(result => {
+      subscribeToPush(activeReminders).then(result => {
         setPushStatus(result.ok ? null : (result.reason || '通知の登録に失敗しました'));
       });
     } else {
       unsubscribeFromPush();
       setPushStatus(null);
     }
-  }, [reminderSettings.enabled, reminderSettings.time, settingsLoaded]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reminderSettings.enabled, remindersKey, settingsLoaded]);
 
   // "今すぐ服薬を記録" manifest shortcut (/?quickAction=log) opens straight into the
   // quick-record sheet for people who don't want to go through the calendar edit flow.
@@ -392,6 +438,23 @@ const App: React.FC = () => {
     setEditingMed(null);
   };
 
+  const handleOpenGroupForm = () => {
+    setEditingMed({
+      id: '',
+      title: '',
+      unit: '錠',
+      dosage: 0,
+      label: '',
+      stock: 0,
+      memo: '',
+      color: 'emerald',
+      startDate: Date.now(),
+      isFolder: true,
+      folderType: 'multi-dose',
+    });
+    setIsFormOpen(true);
+  };
+
   // Fix: Added handleScan implementation using Gemini AI to extract medication data
   // Accepts one or more photos (multi-page お薬手帳) and analyzes them together in a
   // single request so duplicate entries across pages can be reconciled by the model.
@@ -431,23 +494,22 @@ const App: React.FC = () => {
       const jsonStr = response.text?.trim();
       if (jsonStr) {
         const results = JSON.parse(jsonStr);
-        if (Array.isArray(results)) {
-          results.forEach(res => {
-            const newMed: Medication = {
-              id: crypto.randomUUID(),
-              title: res.title || '不明なお薬',
-              dosage: res.dosage || 1,
-              unit: (UNITS.includes(res.unit as any) ? res.unit : '錠') as any,
-              label: (LABELS.includes(res.label as any) ? res.label : '朝食後') as any,
-              stock: res.stock || 0,
-              memo: res.memo || '',
-              color: 'emerald',
-              startDate: Date.now(),
-              isFolder: false,
-            };
-            setMedications(prev => [...prev, newMed]);
-            addGlobalLog('scan', newMed.title, 'AIスキャンにより追加しました');
-          });
+        if (Array.isArray(results) && results.length > 0) {
+          const drafts: Medication[] = results.map(res => ({
+            id: crypto.randomUUID(),
+            title: res.title || '不明なお薬',
+            dosage: res.dosage || 1,
+            unit: (UNITS.includes(res.unit as any) ? res.unit : '錠') as any,
+            label: (LABELS.includes(res.label as any) ? res.label : '朝食後') as any,
+            stock: res.stock || 0,
+            memo: res.memo || '',
+            color: 'emerald',
+            startDate: Date.now(),
+            isFolder: false,
+          }));
+          setScanDrafts(drafts);
+        } else {
+          alert("お薬の情報を読み取れませんでした。手動で入力してください。");
         }
       }
     } catch (error) {
@@ -456,6 +518,12 @@ const App: React.FC = () => {
     } finally {
       setIsScanning(false);
     }
+  };
+
+  const handleConfirmScanReview = (meds: Medication[]) => {
+    setMedications(prev => [...prev, ...meds]);
+    meds.forEach(med => addGlobalLog('scan', med.title, 'AIスキャンにより追加しました'));
+    setScanDrafts(null);
   };
 
   return (
@@ -469,18 +537,22 @@ const App: React.FC = () => {
             setMedications={setMedications}
             conditions={conditions}
             setConditions={setConditions}
-            onEditMed={(med) => { setEditingMed(med); setIsFormOpen(true); }}
+            onEditMed={isViewer ? () => {} : (med) => { setEditingMed(med); setIsFormOpen(true); }}
             onOpenForm={() => { setEditingMed(null); setIsFormOpen(true); }}
             onOpenScan={() => setIsCameraOpen(true)}
+            onOpenGroupForm={handleOpenGroupForm}
+            readOnly={isViewer}
           />
         )}
         {view === 'meds' && (
-          <MedicationListView 
-            medications={medications} 
+          <MedicationListView
+            medications={medications}
             globalLogs={globalLogs}
-            onEditMed={(med) => { setEditingMed(med); setIsFormOpen(true); }}
+            onEditMed={isViewer ? () => {} : (med) => { setEditingMed(med); setIsFormOpen(true); }}
             onOpenForm={() => { setEditingMed(null); setIsFormOpen(true); }}
             onOpenScan={() => setIsCameraOpen(true)}
+            onOpenGroupForm={handleOpenGroupForm}
+            readOnly={isViewer}
           />
         )}
         {view === 'report-setup' && (
@@ -503,8 +575,24 @@ const App: React.FC = () => {
         )}
         {view === 'settings' && (
           <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 animate-in fade-in duration-300">
-            <div className="bg-slate-50 dark:bg-slate-900 py-3 safe-top border-b border-slate-200 dark:border-slate-700"><h1 className="text-center font-bold text-slate-800 dark:text-slate-100">設定</h1></div>
+            <div className="bg-slate-50 dark:bg-slate-900 py-3 safe-top border-b border-slate-200 dark:border-slate-700"><h1 className="text-center font-bold text-slate-800 dark:text-slate-100">{t.settings.title}</h1></div>
             <div className="p-5 space-y-4">
+              <div className="bg-white dark:bg-slate-800 rounded-[32px] p-6 border border-slate-100 dark:border-slate-700 shadow-sm">
+                <p className="text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest mb-3">{t.settings.language}</p>
+                <div className="flex bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
+                  {(['ja', 'en'] as const).map(lang => (
+                    <button
+                      key={lang}
+                      type="button"
+                      onClick={() => setLanguage(lang)}
+                      className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${language === lang ? 'bg-white dark:bg-slate-800 shadow-sm text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-500'}`}
+                    >
+                      {lang === 'ja' ? '日本語' : 'English'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="bg-white dark:bg-slate-800 rounded-[32px] p-6 border border-slate-100 dark:border-slate-700 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -512,15 +600,15 @@ const App: React.FC = () => {
                       {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
                     </div>
                     <div>
-                      <p className="font-black text-slate-800 dark:text-slate-100">ダークモード</p>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold">画面の配色を切り替え</p>
+                      <p className="font-black text-slate-800 dark:text-slate-100">{t.settings.darkMode}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold">{t.settings.darkModeDesc}</p>
                     </div>
                   </div>
                   <button
                     onClick={toggleTheme}
                     role="switch"
                     aria-checked={theme === 'dark'}
-                    aria-label="ダークモード"
+                    aria-label={t.settings.darkMode}
                     className={`w-12 h-6 rounded-full transition-colors relative ${theme === 'dark' ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}
                   >
                     <div className={`absolute top-1 w-4 h-4 bg-white dark:bg-slate-800 rounded-full transition-all ${theme === 'dark' ? 'left-7' : 'left-1'}`} />
@@ -535,15 +623,15 @@ const App: React.FC = () => {
                       <Bell size={20} />
                     </div>
                     <div>
-                      <p className="font-black text-slate-800 dark:text-slate-100">強制リマインド</p>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold">指定時間以降の起動時に警告</p>
+                      <p className="font-black text-slate-800 dark:text-slate-100">{t.settings.forceRemind}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold">{t.settings.forceRemindDesc}</p>
                     </div>
                   </div>
                   <button
                     onClick={() => setReminderSettings(prev => ({ ...prev, enabled: !prev.enabled }))}
                     role="switch"
                     aria-checked={reminderSettings.enabled}
-                    aria-label="強制リマインド"
+                    aria-label={t.settings.forceRemind}
                     className={`w-12 h-6 rounded-full transition-colors relative ${reminderSettings.enabled ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}
                   >
                     <div className={`absolute top-1 w-4 h-4 bg-white dark:bg-slate-800 rounded-full transition-all ${reminderSettings.enabled ? 'left-7' : 'left-1'}`} />
@@ -553,7 +641,7 @@ const App: React.FC = () => {
                 {reminderSettings.enabled && (
                   <div className="flex items-center gap-3 pt-2 border-t border-slate-50 dark:border-slate-800">
                     <Clock size={16} className="text-slate-500 dark:text-slate-500" />
-                    <span className="text-sm font-bold text-slate-600 dark:text-slate-300">開始時間:</span>
+                    <span className="text-sm font-bold text-slate-600 dark:text-slate-300">{t.settings.startTime}</span>
                     <input
                       type="time"
                       value={reminderSettings.time}
@@ -561,6 +649,12 @@ const App: React.FC = () => {
                       className="bg-slate-50 dark:bg-slate-900 border-none rounded-lg px-3 py-1 font-black text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none"
                     />
                   </div>
+                )}
+
+                {reminderSettings.enabled && (
+                  <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold leading-relaxed pt-2 border-t border-slate-50 dark:border-slate-800">
+                    {t.settings.perMedHint}
+                  </p>
                 )}
 
                 {reminderSettings.enabled && pushStatus && (
@@ -585,12 +679,21 @@ const App: React.FC = () => {
                 onJoinHousehold={handleJoinHousehold}
                 onSelectHousehold={setActiveHouseholdId}
                 onLeaveHousehold={handleLeaveHousehold}
+                onUpdateMemberRole={handleUpdateMemberRole}
               />
 
               <button onClick={() => setView('report-setup')} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center"><FileDown size={24}/></div>
-                  <div className="text-left"><p className="text-lg">レポート作成</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">PDF出力・印刷・共有</p></div>
+                  <div className="text-left"><p className="text-lg">{t.settings.reportCreate}</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">{t.settings.reportCreateDesc}</p></div>
+                </div>
+                <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
+              </button>
+
+              <button onClick={() => setShowOnboarding(true)} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-teal-50 dark:bg-teal-500/10 text-teal-600 rounded-2xl flex items-center justify-center"><HelpCircle size={24}/></div>
+                  <div className="text-left"><p className="text-lg">{t.settings.howToUse}</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">{t.settings.howToUseDesc}</p></div>
                 </div>
                 <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
               </button>
@@ -603,9 +706,9 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-purple-50 dark:bg-purple-500/10 text-purple-600 rounded-2xl flex items-center justify-center"><ShieldAlert size={24}/></div>
                   <div className="text-left">
-                    <p className="text-lg">飲み合わせチェック(AI)</p>
+                    <p className="text-lg">{t.settings.interactionCheck}</p>
                     <p className="text-xs text-slate-500 dark:text-slate-500 font-bold">
-                      {medications.filter(m => !m.isFolder).length < 2 ? 'お薬を2件以上登録すると使えます' : 'AIが併用リスクを確認します'}
+                      {medications.filter(m => !m.isFolder).length < 2 ? t.settings.interactionCheckNeedsTwo : t.settings.interactionCheckReady}
                     </p>
                   </div>
                 </div>
@@ -614,17 +717,17 @@ const App: React.FC = () => {
               <div className="bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 shadow-sm divide-y divide-slate-50 dark:divide-slate-800 overflow-hidden">
                 <button onClick={handleExportBackup} className="w-full p-6 flex items-center gap-4 active:bg-slate-50 dark:active:bg-slate-700 transition-colors">
                   <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0"><Download size={22}/></div>
-                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">データをエクスポート</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">全データをJSONファイルとして保存</p></div>
+                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">{t.settings.exportData}</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">{t.settings.exportDataDesc}</p></div>
                 </button>
                 <button onClick={() => importInputRef.current?.click()} className="w-full p-6 flex items-center gap-4 active:bg-slate-50 dark:active:bg-slate-700 transition-colors">
                   <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center shrink-0"><Upload size={22}/></div>
-                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">データをインポート</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">バックアップファイルから復元(上書き)</p></div>
+                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">{t.settings.importData}</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">{t.settings.importDataDesc}</p></div>
                 </button>
                 <input ref={importInputRef} type="file" accept="application/json" onChange={handleImportFile} className="hidden" />
               </div>
 
-              <button onClick={() => { if(window.confirm('全データを削除しますか？')) { localStorage.clear(); location.reload(); }}} className="w-full p-4 bg-white dark:bg-slate-800 rounded-3xl border border-red-50 dark:border-red-500/20 text-red-600 font-bold flex items-center gap-3 active:scale-95 transition-transform">
-                <RotateCcw size={20} /> データリセット
+              <button onClick={() => { if(window.confirm(t.settings.resetConfirm)) { localStorage.clear(); location.reload(); }}} className="w-full p-4 bg-white dark:bg-slate-800 rounded-3xl border border-red-50 dark:border-red-500/20 text-red-600 font-bold flex items-center gap-3 active:scale-95 transition-transform">
+                <RotateCcw size={20} /> {t.settings.resetData}
               </button>
             </div>
           </div>
@@ -632,7 +735,9 @@ const App: React.FC = () => {
       </main>
 
       <BottomNav currentView={view} onChange={setView} />
-      
+
+      {showOnboarding && <OnboardingOverlay onFinish={handleFinishOnboarding} />}
+
       {showReminderOverlay && (
         <ReminderOverlay 
           reminderTime={reminderSettings.time}
@@ -668,16 +773,26 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {scanDrafts && (
+        <ScanReviewModal
+          drafts={scanDrafts}
+          onConfirm={handleConfirmScanReview}
+          onCancel={() => setScanDrafts(null)}
+        />
+      )}
+
       {isFormOpen && (
-        <MedicationForm 
+        <MedicationForm
           initialData={editingMed || undefined}
+          isNew={!editingMed || !medications.some(m => m.id === editingMed.id)}
+          availableGroups={medications.filter(m => m.isFolder)}
           onSave={handleSaveMed}
           onCancel={() => { setIsFormOpen(false); setEditingMed(null); }}
-          onDelete={(id) => {
+          onDelete={editingMed && medications.some(m => m.id === editingMed.id) ? (id) => {
             setMedications(medications.filter(m => m.id !== id && m.parentId !== id));
             addGlobalLog('delete', editingMed?.title || '不明', '情報を削除しました');
             setIsFormOpen(false);
-          }}
+          } : undefined}
           visibleUnits={UNITS}
           visibleLabels={LABELS}
         />

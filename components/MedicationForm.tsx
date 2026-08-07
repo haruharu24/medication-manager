@@ -13,6 +13,10 @@ interface MedicationFormProps {
   onDelete?: (id: string) => void;
   visibleUnits: string[];
   visibleLabels: string[];
+  // Existing folders a regular (non-folder) medication can be assigned into.
+  availableGroups?: Medication[];
+  // True when initialData describes a not-yet-saved item (so the header shouldn't say "編集").
+  isNew?: boolean;
 }
 
 // Options
@@ -21,6 +25,10 @@ const MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const DOSAGE_OPTIONS = [0.1, 0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 10];
 const STOCK_OPTIONS = [0, 5, 7, 10, 14, 21, 28, 30, 60, 90, 100];
 const LOW_STOCK_THRESHOLD_OPTIONS = [1, 2, 3, 5, 7, 10, 14];
+const FOLDER_TYPE_OPTIONS: { value: 'multi-dose' | 'one-pack'; label: string }[] = [
+  { value: 'multi-dose', label: '服用グループ' },
+  { value: 'one-pack', label: '一包化' },
+];
 
 const ScrollWheel: React.FC<{ 
   items: number[]; 
@@ -64,7 +72,7 @@ const ScrollWheel: React.FC<{
   );
 };
 
-export const MedicationForm: React.FC<MedicationFormProps> = ({ initialData, onSave, onCancel, onDelete, visibleUnits, visibleLabels }) => {
+export const MedicationForm: React.FC<MedicationFormProps> = ({ initialData, onSave, onCancel, onDelete, visibleUnits, visibleLabels, availableGroups = [], isNew }) => {
   const isFolder = initialData?.isFolder;
   const [title, setTitle] = useState(initialData?.title || '');
   const [dosage, setDosage] = useState(initialData?.dosage?.toString() || '1');
@@ -75,7 +83,9 @@ export const MedicationForm: React.FC<MedicationFormProps> = ({ initialData, onS
   const [memo, setMemo] = useState(initialData?.memo || '');
   const [notificationTime, setNotificationTime] = useState(initialData?.notificationTime || '');
   const [startDateStr, setStartDateStr] = useState(format(initialData?.startDate || Date.now(), 'yyyy-MM-dd'));
-  
+  const [folderType, setFolderType] = useState<'multi-dose' | 'one-pack'>(initialData?.folderType || 'multi-dose');
+  const [parentId, setParentId] = useState(initialData?.parentId || '');
+
   const [isTimePickerOpen, setIsTimePickerOpen] = useState(false);
   const [hour, setHour] = useState(notificationTime ? parseInt(notificationTime.split(':')[0]) : 8);
   const [minute, setMinute] = useState(notificationTime ? parseInt(notificationTime.split(':')[1]) : 0);
@@ -100,8 +110,8 @@ export const MedicationForm: React.FC<MedicationFormProps> = ({ initialData, onS
       color: 'emerald',
       startDate: new Date(startDateStr).getTime(),
       isFolder: !!isFolder,
-      folderType: initialData?.folderType,
-      parentId: initialData?.parentId
+      folderType: isFolder ? folderType : undefined,
+      parentId: !isFolder && parentId ? parentId : undefined
     } as Medication);
   };
 
@@ -110,7 +120,7 @@ export const MedicationForm: React.FC<MedicationFormProps> = ({ initialData, onS
       <div className="bg-white dark:bg-slate-800 px-4 py-3 flex items-center justify-between shadow-sm border-b border-slate-200 dark:border-slate-700 safe-top">
         <button onClick={onCancel} aria-label="戻る" className="p-2 -ml-2 text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors"><ChevronLeft size={24} /></button>
         <div className="flex flex-col items-center">
-          <h2 id="medication-form-title" className="text-sm font-black text-slate-800 dark:text-slate-100 tracking-tight">{isFolder ? 'グループの編集' : 'お薬の編集'}</h2>
+          <h2 id="medication-form-title" className="text-sm font-black text-slate-800 dark:text-slate-100 tracking-tight">{isFolder ? (isNew ? 'グループを作成' : 'グループの編集') : (isNew ? 'お薬を追加' : 'お薬の編集')}</h2>
           {isFolder && <span className="text-[10px] text-slate-500 dark:text-slate-500 font-bold uppercase">{initialData?.folderType === 'one-pack' ? '一包化' : '服用グループ'}</span>}
         </div>
         <div className="w-10"></div> 
@@ -132,8 +142,37 @@ export const MedicationForm: React.FC<MedicationFormProps> = ({ initialData, onS
             </div>
           </div>
 
+          {isFolder && (
+            <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700">
+              <label className="block text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest mb-3">グループの種類</label>
+              <div className="flex bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
+                {FOLDER_TYPE_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setFolderType(opt.value)}
+                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${folderType === opt.value ? 'bg-white dark:bg-slate-800 shadow-sm text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-500'}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {!isFolder && (
             <>
+              {availableGroups.length > 0 && (
+                <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 relative">
+                  <label htmlFor="med-parent-group" className="block text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest mb-2">グループ</label>
+                  <select id="med-parent-group" value={parentId} onChange={(e) => setParentId(e.target.value)} className="w-full bg-transparent text-lg font-bold text-slate-800 dark:text-slate-100 outline-none appearance-none">
+                    <option value="">なし</option>
+                    {availableGroups.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-4 bottom-6 text-slate-500 dark:text-slate-500" />
+                </div>
+              )}
+
               <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 relative">
                 <label htmlFor="med-start-date" className="block text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest mb-2">開始日（処方日）</label>
                 <div className="flex items-center gap-3">

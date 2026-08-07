@@ -2,9 +2,10 @@
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Pill, History, Plus, Camera, FileText, Edit2, ChevronDown, Package, FolderOpen, AlertTriangle } from 'lucide-react';
+import { Pill, History, Plus, Camera, FileText, Edit2, ChevronDown, Package, FolderOpen, AlertTriangle, FolderPlus } from 'lucide-react';
 import { Medication, GlobalActionLog } from '../../types';
 import { getStockLevel } from '../../utils/stock';
+import { useI18n } from '../../i18n';
 
 const StockBadge: React.FC<{ med: Medication }> = ({ med }) => {
   const level = getStockLevel(med);
@@ -25,15 +26,22 @@ interface MedicationListViewProps {
   onEditMed: (med: Medication) => void;
   onOpenForm: () => void;
   onOpenScan: () => void;
+  onOpenGroupForm: () => void;
+  // True for a 'viewer'-role household member: hides the "追加" entry point
+  // since it leads to writes (add/scan/create group) they aren't allowed to make.
+  readOnly?: boolean;
 }
 
-export const MedicationListView: React.FC<MedicationListViewProps> = ({ 
-  medications, 
-  globalLogs, 
-  onEditMed, 
-  onOpenForm, 
-  onOpenScan 
+export const MedicationListView: React.FC<MedicationListViewProps> = ({
+  medications,
+  globalLogs,
+  onEditMed,
+  onOpenForm,
+  onOpenScan,
+  onOpenGroupForm,
+  readOnly
 }) => {
+  const { t } = useI18n();
   const [tab, setTab] = useState<'list' | 'history'>('list');
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -70,18 +78,23 @@ export const MedicationListView: React.FC<MedicationListViewProps> = ({
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900">
       <div className="bg-slate-50 dark:bg-slate-900 py-3 safe-top border-b border-slate-200 dark:border-slate-700 relative">
-        <h1 className="text-center font-bold text-slate-800 dark:text-slate-100">お薬ボックス</h1>
+        <h1 className="text-center font-bold text-slate-800 dark:text-slate-100">{t.meds.title}</h1>
         <div className="absolute right-4 top-1/2 -translate-y-1/2">
+          {!readOnly && (
           <button onClick={() => setShowAddMenu(!showAddMenu)} className="bg-emerald-700 text-white px-4 py-2 rounded-full font-bold text-xs shadow-lg flex items-center gap-1">
-            <Plus size={14} /> 追加
+            <Plus size={14} /> {t.home.add}
           </button>
-          {showAddMenu && (
+          )}
+          {showAddMenu && !readOnly && (
             <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 py-2 z-[100] animate-in fade-in slide-in-from-top-2">
               <button onClick={() => { onOpenForm(); setShowAddMenu(false); }} className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-left text-sm font-bold text-slate-700 dark:text-slate-200">
-                <FileText size={18} className="text-emerald-500" /> 手動入力
+                <FileText size={18} className="text-emerald-500" /> {t.home.manualEntry}
               </button>
               <button onClick={() => { onOpenScan(); setShowAddMenu(false); }} className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-left text-sm font-bold text-slate-700 dark:text-slate-200">
-                <Camera size={18} className="text-blue-500" /> 手帳スキャン
+                <Camera size={18} className="text-blue-500" /> {t.home.scanBook}
+              </button>
+              <button onClick={() => { onOpenGroupForm(); setShowAddMenu(false); }} className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-left text-sm font-bold text-slate-700 dark:text-slate-200">
+                <FolderPlus size={18} className="text-amber-500" /> {t.home.createGroup}
               </button>
             </div>
           )}
@@ -90,17 +103,17 @@ export const MedicationListView: React.FC<MedicationListViewProps> = ({
 
       <div className="px-5 py-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 flex justify-center">
         <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 w-full max-w-xs">
-          <button 
-            onClick={() => setTab('list')} 
+          <button
+            onClick={() => setTab('list')}
             className={`flex-1 py-2 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${tab === 'list' ? 'bg-white dark:bg-slate-800 shadow-sm text-emerald-700' : 'text-slate-600 dark:text-slate-500'}`}
           >
-            <Pill size={16}/> リスト
+            <Pill size={16}/> {t.meds.list}
           </button>
-          <button 
-            onClick={() => setTab('history')} 
+          <button
+            onClick={() => setTab('history')}
             className={`flex-1 py-2 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${tab === 'history' ? 'bg-white dark:bg-slate-800 shadow-sm text-emerald-700' : 'text-slate-600 dark:text-slate-500'}`}
           >
-            <History size={16}/> 履歴
+            <History size={16}/> {t.meds.history}
           </button>
         </div>
       </div>
@@ -139,7 +152,7 @@ export const MedicationListView: React.FC<MedicationListViewProps> = ({
             
             {orphanMeds.length > 0 && (
               <div className="space-y-3">
-                <h3 className="text-[10px] font-black text-slate-600 dark:text-slate-500 uppercase tracking-widest px-2">個別のお薬</h3>
+                <h3 className="text-[10px] font-black text-slate-600 dark:text-slate-500 uppercase tracking-widest px-2">{t.meds.individualMeds}</h3>
                 {orphanMeds.map(med => (
                   <div 
                     key={med.id} 

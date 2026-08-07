@@ -22,6 +22,7 @@ const baseProps = {
   onJoinHousehold: vi.fn(),
   onSelectHousehold: vi.fn(),
   onLeaveHousehold: vi.fn(),
+  onUpdateMemberRole: vi.fn(),
 };
 
 describe('AccountPanel (logged out)', () => {
@@ -102,8 +103,8 @@ describe('AccountPanel (logged in, no household yet)', () => {
 describe('AccountPanel (logged in, active household)', () => {
   const household: Household = { id: 'h1', name: 'テスト家族', inviteCode: 'ABCD1234', ownerId: 'u1' };
   const members: HouseholdMember[] = [
-    { userId: 'u1', email: 'alice@example.com', joinedAt: '2026-08-01T00:00:00.000Z' },
-    { userId: 'u2', email: 'bob@example.com', joinedAt: '2026-08-02T00:00:00.000Z' },
+    { userId: 'u1', email: 'alice@example.com', role: 'owner', joinedAt: '2026-08-01T00:00:00.000Z' },
+    { userId: 'u2', email: 'bob@example.com', role: 'editor', joinedAt: '2026-08-02T00:00:00.000Z' },
   ];
 
   it('shows the household name, invite code, and member list', () => {
@@ -131,5 +132,36 @@ describe('AccountPanel (logged in, active household)', () => {
 
     await user.click(screen.getByRole('button', { name: 'ログアウト' }));
     expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the owner badge for the owner and lets the owner change another member\'s role', async () => {
+    const user = userEvent.setup();
+    const onUpdateMemberRole = vi.fn().mockResolvedValue(undefined);
+    render(<AccountPanel {...baseProps} auth={auth} households={[household]} activeHouseholdId="h1" members={members} onUpdateMemberRole={onUpdateMemberRole} />);
+
+    expect(screen.getByText('オーナー')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '閲覧のみ' }));
+    expect(onUpdateMemberRole).toHaveBeenCalledWith('u2', 'viewer');
+  });
+
+  it('shows a static role badge (not a toggle) for a non-owner viewing another member', () => {
+    const bobAuth: StoredAuth = { token: 'tok', user: { id: 'u2', email: 'bob@example.com' } };
+    render(<AccountPanel {...baseProps} auth={bobAuth} households={[household]} activeHouseholdId="h1" members={members} />);
+
+    // Bob (not the owner) sees Alice's role as a plain badge, not editable buttons.
+    expect(screen.queryByRole('button', { name: '編集者' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '閲覧のみ' })).not.toBeInTheDocument();
+  });
+
+  it('shows a read-only notice when the signed-in user is a viewer', () => {
+    const viewerMembers: HouseholdMember[] = [
+      { userId: 'u1', email: 'alice@example.com', role: 'owner', joinedAt: '2026-08-01T00:00:00.000Z' },
+      { userId: 'u2', email: 'bob@example.com', role: 'viewer', joinedAt: '2026-08-02T00:00:00.000Z' },
+    ];
+    const bobAuth: StoredAuth = { token: 'tok', user: { id: 'u2', email: 'bob@example.com' } };
+    render(<AccountPanel {...baseProps} auth={bobAuth} households={[household]} activeHouseholdId="h1" members={viewerMembers} />);
+
+    expect(screen.getByText('閲覧のみのメンバーです。お薬の追加・編集はできません。')).toBeInTheDocument();
   });
 });

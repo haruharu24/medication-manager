@@ -141,6 +141,73 @@ describe('household lifecycle + data sync', () => {
     expect(res.status).toBe(404);
   });
 
+  it('the owner can demote a member to viewer, which blocks that member from writing shared data', async () => {
+    const ownerReg = await postJson('/api/auth/register', { email: 'role-owner@example.com', password: 'password123' });
+    const { token: ownerToken } = await ownerReg.json();
+    const { household } = await (await postJson('/api/households', { name: '権限テスト世帯' }, ownerToken)).json();
+
+    const memberReg = await postJson('/api/auth/register', { email: 'role-member@example.com', password: 'password123' });
+    const { token: memberToken, user: member } = await memberReg.json();
+    await postJson('/api/households/join', { inviteCode: household.inviteCode }, memberToken);
+
+    // Before demotion: member can write.
+    const beforeRes = await putJson(
+      `/api/households/${household.id}/data`,
+      { data: { medications: [], logs: [], globalLogs: [], conditions: [] } },
+      memberToken
+    );
+    expect(beforeRes.status).toBe(200);
+
+    const demoteRes = await postJson(`/api/households/${household.id}/members/${member.id}/role`, { role: 'viewer' }, ownerToken);
+    expect(demoteRes.status).toBe(200);
+    const { members } = await demoteRes.json();
+    expect(members.find(m => m.userId === member.id).role).toBe('viewer');
+
+    // After demotion: member can still read...
+    const readRes = await getJson(`/api/households/${household.id}/data`, memberToken);
+    expect(readRes.status).toBe(200);
+
+    // ...but not write.
+    const writeRes = await putJson(
+      `/api/households/${household.id}/data`,
+      { data: { medications: [{ id: 'should-be-rejected' }], logs: [], globalLogs: [], conditions: [] } },
+      memberToken
+    );
+    expect(writeRes.status).toBe(403);
+
+    // Owner can promote them back to editor.
+    const promoteRes = await postJson(`/api/households/${household.id}/members/${member.id}/role`, { role: 'editor' }, ownerToken);
+    expect(promoteRes.status).toBe(200);
+    const afterPromote = await putJson(
+      `/api/households/${household.id}/data`,
+      { data: { medications: [], logs: [], globalLogs: [], conditions: [] } },
+      memberToken
+    );
+    expect(afterPromote.status).toBe(200);
+  });
+
+  it('only the owner can change member roles, and the owner\'s own role can\'t be changed', async () => {
+    const ownerReg = await postJson('/api/auth/register', { email: 'role-owner2@example.com', password: 'password123' });
+    const { token: ownerToken, user: owner } = await ownerReg.json();
+    const { household } = await (await postJson('/api/households', { name: '世帯', ownerId: owner.id } , ownerToken)).json();
+
+    const memberReg = await postJson('/api/auth/register', { email: 'role-member2@example.com', password: 'password123' });
+    const { token: memberToken, user: member } = await memberReg.json();
+    await postJson('/api/households/join', { inviteCode: household.inviteCode }, memberToken);
+
+    // A non-owner member can't change anyone's role.
+    const forbiddenRes = await postJson(`/api/households/${household.id}/members/${member.id}/role`, { role: 'viewer' }, memberToken);
+    expect(forbiddenRes.status).toBe(403);
+
+    // The owner can't demote themselves.
+    const ownerDemoteRes = await postJson(`/api/households/${household.id}/members/${owner.id}/role`, { role: 'viewer' }, ownerToken);
+    expect(ownerDemoteRes.status).toBe(400);
+
+    // An invalid role value is rejected.
+    const invalidRes = await postJson(`/api/households/${household.id}/members/${member.id}/role`, { role: 'admin' }, ownerToken);
+    expect(invalidRes.status).toBe(400);
+  });
+
   it('broadcasts a data-updated event over WebSocket to other members in real time', async () => {
     const ownerReg = await postJson('/api/auth/register', { email: 'ws-owner@example.com', password: 'password123' });
     const { token: ownerToken } = await ownerReg.json();
@@ -185,15 +252,18 @@ describe('push subscription endpoints', () => {
     expect(body.publicKey).toBe(process.env.VAPID_PUBLIC_KEY);
   });
 
-  it('accepts a subscription and a snooze request', async () => {
+  it('accepts a subscription with multiple reminders and a snooze request', async () => {
     const subRes = await postJson('/api/subscribe', {
       subscription: { endpoint: 'https://example.com/push/abc', keys: { p256dh: 'x', auth: 'y' } },
-      reminderTime: '08:00',
+      reminders: [
+        { id: 'ALL', medicationId: 'ALL', title: '服薬リマインダー', time: '08:00' },
+        { id: 'med-1', medicationId: 'med-1', title: 'テスト薬', time: '09:00' },
+      ],
       timezoneOffsetMinutes: -540,
     });
     expect(subRes.status).toBe(200);
 
-    const snoozeRes = await postJson('/api/snooze', { endpoint: 'https://example.com/push/abc', minutes: 15 });
+    const snoozeRes = await postJson('/api/snooze', { endpoint: 'https://example.com/push/abc', reminderId: 'med-1', minutes: 15 });
     expect(snoozeRes.status).toBe(200);
 
     const unsubRes = await postJson('/api/unsubscribe', { endpoint: 'https://example.com/push/abc' });
@@ -201,7 +271,20 @@ describe('push subscription endpoints', () => {
   });
 
   it('rejects a subscribe request missing required fields', async () => {
-    const res = await postJson('/api/subscribe', { reminderTime: '08:00' });
+    const res = await postJson('/api/subscribe', { reminders: [{ id: 'ALL', time: '08:00' }] });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a subscribe request with no valid reminders', async () => {
+    const res = await postJson('/api/subscribe', {
+      subscription: { endpoint: 'https://example.com/push/no-reminders', keys: { p256dh: 'x', auth: 'y' } },
+      reminders: [],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a snooze request missing reminderId', async () => {
+    const res = await postJson('/api/snooze', { endpoint: 'https://example.com/push/abc' });
     expect(res.status).toBe(400);
   });
 });
