@@ -47,7 +47,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({ onCapture, onCancel })
   };
 
   return (
-    <div className="fixed inset-0 z-[200] bg-slate-900 flex flex-col items-center justify-center p-6 animate-in fade-in duration-200 overflow-y-auto no-scrollbar">
+    <div role="dialog" aria-modal="true" aria-label="お薬手帳のスキャン" className="fixed inset-0 z-[200] bg-slate-900 flex flex-col items-center justify-center p-6 animate-in fade-in duration-200 overflow-y-auto no-scrollbar">
       {/* Background Decor */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-[10%] -left-[10%] w-[50%] h-[50%] bg-emerald-500/10 blur-[120px] rounded-full"></div>
@@ -56,7 +56,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({ onCapture, onCancel })
 
       {/* Close Button */}
       <div className="absolute top-0 right-0 p-4 z-20 safe-top">
-        <button onClick={onCancel} className="p-3 bg-white/10 text-white rounded-full backdrop-blur-md active:scale-90 transition-transform">
+        <button onClick={onCancel} aria-label="閉じる" className="p-3 bg-white/10 text-white rounded-full backdrop-blur-md active:scale-90 transition-transform">
           <X size={24} />
         </button>
       </div>
@@ -66,7 +66,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({ onCapture, onCancel })
           <div className="py-12 flex flex-col items-center">
             <Loader2 size={56} className="animate-spin text-emerald-400 mb-6" />
             <h3 className="text-xl font-bold text-white mb-2">読み込み中...</h3>
-            <p className="text-slate-400 text-sm">画像を解析する準備をしています</p>
+            <p className="text-slate-500 text-sm">画像を解析する準備をしています</p>
           </div>
         ) : (
           <>
@@ -75,7 +75,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({ onCapture, onCancel })
             </div>
 
             <h3 className="text-2xl font-black text-white mb-3 tracking-tight">お薬手帳のスキャン</h3>
-            <p className="text-slate-400 text-sm mb-8 leading-relaxed">
+            <p className="text-slate-500 text-sm mb-8 leading-relaxed">
               複数ページある場合は続けて撮影・選択できます。撮り終えたら「まとめて解析する」を押してください。
             </p>
 
@@ -94,7 +94,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({ onCapture, onCancel })
                     </div>
                   ))}
                 </div>
-                <p className="text-[10px] text-slate-400 font-bold mt-2">{images.length}枚 選択中</p>
+                <p className="text-[10px] text-slate-500 font-bold mt-2">{images.length}枚 選択中</p>
               </div>
             )}
 
@@ -130,7 +130,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({ onCapture, onCancel })
 
             <div className="mt-10 flex items-start gap-3 p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 text-left">
               <AlertCircle size={16} className="text-emerald-400 shrink-0 mt-0.5" />
-              <p className="text-[11px] leading-relaxed text-slate-400">
+              <p className="text-[11px] leading-relaxed text-slate-500">
                 <span className="text-emerald-400 font-bold">ヒント:</span> 名前や用量がはっきり写るように撮影してください。影が入らないように明るい場所がおすすめです。
               </p>
             </div>

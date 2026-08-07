@@ -31,19 +31,19 @@ export const InteractionCheckModal: React.FC<InteractionCheckModalProps> = ({ me
   }, [medications]);
 
   return (
-    <div className="fixed inset-0 z-[300] bg-black/50 backdrop-blur-sm flex items-end justify-center">
+    <div role="dialog" aria-modal="true" aria-labelledby="interaction-check-title" className="fixed inset-0 z-[300] bg-black/50 backdrop-blur-sm flex items-end justify-center">
       <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-[32px] p-6 pb-8 safe-bottom max-h-[85vh] overflow-y-auto no-scrollbar animate-in slide-in-from-bottom duration-300">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+          <h2 id="interaction-check-title" className="text-lg font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <ShieldAlert size={20} className="text-purple-600" /> 飲み合わせチェック(AI)
           </h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 active:scale-90 transition-transform">
+          <button onClick={onClose} aria-label="閉じる" className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 active:scale-90 transition-transform">
             <X size={16} />
           </button>
         </div>
 
         {loading && (
-          <div className="py-16 flex flex-col items-center gap-3 text-slate-400 dark:text-slate-500">
+          <div className="py-16 flex flex-col items-center gap-3 text-slate-500 dark:text-slate-500">
             <Loader2 size={32} className="animate-spin" />
             <p className="text-xs font-bold">AIが飲み合わせを確認しています...</p>
           </div>
@@ -52,7 +52,7 @@ export const InteractionCheckModal: React.FC<InteractionCheckModalProps> = ({ me
         {!loading && error && (
           <div className="py-10 text-center space-y-2">
             <AlertTriangle size={32} className="mx-auto text-red-400" />
-            <p className="text-sm font-bold text-red-500">{error}</p>
+            <p className="text-sm font-bold text-red-600">{error}</p>
           </div>
         )}
 
@@ -81,7 +81,7 @@ export const InteractionCheckModal: React.FC<InteractionCheckModalProps> = ({ me
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl">{result.summary}</p>
             )}
 
-            <div className="flex items-start gap-2 pt-2 text-slate-400 dark:text-slate-500">
+            <div className="flex items-start gap-2 pt-2 text-slate-500 dark:text-slate-500">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />
               <p className="text-[10px] font-bold leading-relaxed">
                 この結果はAIによる一般的な情報であり、医学的な判断ではありません。実際の服薬については必ず医師・薬剤師にご確認ください。

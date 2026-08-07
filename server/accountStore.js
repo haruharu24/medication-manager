@@ -7,7 +7,9 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, 'data');
+// Overridable so tests can point this at an isolated temp directory instead of
+// the real server/data/ folder.
+const DATA_DIR = process.env.MEDIMATE_DATA_DIR || path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'accounts.json');
 
 const EMPTY = { users: [], households: [], householdMembers: [], householdData: [] };

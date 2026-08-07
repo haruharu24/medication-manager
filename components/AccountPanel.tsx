@@ -75,13 +75,13 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
           </div>
           <div>
             <p className="font-black text-slate-800 dark:text-slate-100">家族と共有</p>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">ログインして世帯を作成・参加</p>
+            <p className="text-[10px] text-slate-600 dark:text-slate-500 font-bold">ログインして世帯を作成・参加</p>
           </div>
         </div>
 
         <div className="flex bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
-          <button onClick={() => setMode('login')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${mode === 'login' ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-700 dark:text-blue-300' : 'text-slate-400 dark:text-slate-500'}`}>ログイン</button>
-          <button onClick={() => setMode('register')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${mode === 'register' ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-700 dark:text-blue-300' : 'text-slate-400 dark:text-slate-500'}`}>新規登録</button>
+          <button onClick={() => setMode('login')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${mode === 'login' ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-500'}`}>ログイン</button>
+          <button onClick={() => setMode('register')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${mode === 'register' ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-500'}`}>新規登録</button>
         </div>
 
         <div className="space-y-2">
@@ -102,7 +102,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
         </div>
 
         {error && (
-          <div className="flex items-start gap-2 text-red-500">
+          <div className="flex items-start gap-2 text-red-600">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
             <p className="text-xs font-bold">{error}</p>
           </div>
@@ -111,6 +111,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
         <button
           disabled={busy || !email || !password}
           onClick={() => withBusy(() => (mode === 'login' ? onLogin(email, password) : onRegister(email, password)))}
+          aria-label={mode === 'login' ? 'ログインする' : 'アカウントを作成する'}
           className="w-full py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-2xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95 transition-all"
         >
           {busy ? <Loader2 size={18} className="animate-spin" /> : mode === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />}
@@ -130,20 +131,20 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
           <div>
             <p className="font-black text-slate-800 dark:text-slate-100 text-sm">{auth.user.email}</p>
             {syncStatus !== 'idle' && (
-              <p className={`text-[10px] font-bold flex items-center gap-1 ${syncStatus === 'error' ? 'text-red-500' : 'text-slate-400 dark:text-slate-500'}`}>
+              <p className={`text-[10px] font-bold flex items-center gap-1 ${syncStatus === 'error' ? 'text-red-600' : 'text-slate-600 dark:text-slate-500'}`}>
                 {syncStatus === 'syncing' && <RefreshCw size={10} className="animate-spin" />}
                 {SYNC_LABEL[syncStatus]}
               </p>
             )}
           </div>
         </div>
-        <button onClick={onLogout} className="p-2 text-slate-400 dark:text-slate-500 active:scale-90 transition-transform">
+        <button onClick={onLogout} aria-label="ログアウト" className="p-2 text-slate-600 dark:text-slate-500 active:scale-90 transition-transform">
           <LogOut size={18} />
         </button>
       </div>
 
       {syncError && (
-        <div className="flex items-start gap-2 text-red-500">
+        <div className="flex items-start gap-2 text-red-600">
           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
           <p className="text-xs font-bold">{syncError}</p>
         </div>
@@ -177,12 +178,12 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
             ))}
           </div>
 
-          {error && <p className="text-xs font-bold text-red-500">{error}</p>}
+          {error && <p className="text-xs font-bold text-red-600">{error}</p>}
 
           <button
             disabled={busy}
             onClick={() => withBusy(onLeaveHousehold)}
-            className="w-full py-3 text-red-500 font-bold text-xs disabled:opacity-50"
+            className="w-full py-3 text-red-600 font-bold text-xs disabled:opacity-50"
           >
             この世帯から退出する
           </button>
@@ -191,7 +192,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
         <div className="space-y-4 pt-2 border-t border-slate-50 dark:border-slate-800">
           {households.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">参加中の世帯</p>
+              <p className="text-[10px] font-black text-slate-600 dark:text-slate-500 uppercase tracking-widest">参加中の世帯</p>
               {households.map(h => (
                 <button
                   key={h.id}
@@ -206,7 +207,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
           )}
 
           <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">新しい世帯を作る</p>
+            <p className="text-[10px] font-black text-slate-600 dark:text-slate-500 uppercase tracking-widest">新しい世帯を作る</p>
             <div className="flex gap-2">
               <input
                 value={householdName}
@@ -225,7 +226,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
           </div>
 
           <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">招待コードで参加</p>
+            <p className="text-[10px] font-black text-slate-600 dark:text-slate-500 uppercase tracking-widest">招待コードで参加</p>
             <div className="flex gap-2">
               <input
                 value={inviteCode}
@@ -243,7 +244,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
             </div>
           </div>
 
-          {error && <p className="text-xs font-bold text-red-500">{error}</p>}
+          {error && <p className="text-xs font-bold text-red-600">{error}</p>}
         </div>
       )}
     </div>

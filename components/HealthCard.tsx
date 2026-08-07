@@ -22,11 +22,11 @@ export const HealthCard: React.FC<HealthCardProps> = ({ condition, onUpdate, sel
           <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${condition.score > 0 ? 'bg-blue-600 text-white' : 'bg-blue-50 dark:bg-blue-500/10 text-blue-500'}`}>
             <Smile size={18}/>
           </div>
-          <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 tracking-widest uppercase">スコアとメモ</span>
+          <span className="text-[10px] font-black text-slate-500 dark:text-slate-500 tracking-widest uppercase">スコアとメモ</span>
         </div>
         {condition.score > 0 && !isEditMode && (
           <div className="text-blue-600 font-black text-xl leading-none">
-            {condition.score}<span className="text-[10px] ml-0.5 text-slate-300 dark:text-slate-600">/10</span>
+            {condition.score}<span className="text-[10px] ml-0.5 text-slate-500 dark:text-slate-600">/10</span>
           </div>
         )}
       </div>
@@ -42,14 +42,14 @@ export const HealthCard: React.FC<HealthCardProps> = ({ condition, onUpdate, sel
                   className={`h-8 rounded-lg font-black text-xs transition-all active:scale-90 ${
                     condition.score === s 
                       ? 'bg-blue-600 text-white shadow shadow-blue-100 scale-105' 
-                      : 'bg-slate-50 dark:bg-slate-900 text-slate-400 dark:text-slate-500'
+                      : 'bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-500'
                   }`}
                 >
                   {s}
                 </button>
               ))}
             </div>
-            <div className="flex justify-between mt-1 px-1 text-[8px] font-bold text-slate-300 dark:text-slate-600 uppercase">
+            <div className="flex justify-between mt-1 px-1 text-[8px] font-bold text-slate-500 dark:text-slate-600 uppercase">
               <span>悪い</span>
               <span>良い</span>
             </div>
@@ -68,7 +68,7 @@ export const HealthCard: React.FC<HealthCardProps> = ({ condition, onUpdate, sel
       ) : (
         <div className="space-y-2">
           {condition.score === 0 && !condition.memo ? (
-            <p className="text-xs font-medium text-slate-300 dark:text-slate-600 text-center py-2 border border-dashed border-slate-100 dark:border-slate-700 rounded-xl">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-600 text-center py-2 border border-dashed border-slate-100 dark:border-slate-700 rounded-xl">
               記録なし
             </p>
           ) : (

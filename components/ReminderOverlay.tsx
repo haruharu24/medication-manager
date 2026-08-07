@@ -11,8 +11,8 @@ export const ReminderOverlay: React.FC<ReminderOverlayProps> = ({ onConfirm, rem
   const [isChecked, setIsChecked] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-md">
-      <motion.div 
+    <div role="dialog" aria-modal="true" aria-labelledby="reminder-overlay-title" className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-md">
+      <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[40px] overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-700"
@@ -21,9 +21,9 @@ export const ReminderOverlay: React.FC<ReminderOverlayProps> = ({ onConfirm, rem
           <div className="w-20 h-20 bg-amber-50 dark:bg-amber-500/10 rounded-full flex items-center justify-center text-amber-500 animate-pulse">
             <ShieldAlert size={40} />
           </div>
-          
+
           <div className="space-y-2">
-            <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 leading-tight">
+            <h2 id="reminder-overlay-title" className="text-2xl font-black text-slate-800 dark:text-slate-100 leading-tight">
               服薬確認が必要です
             </h2>
             <p className="text-slate-500 dark:text-slate-400 font-bold text-sm">
@@ -37,7 +37,7 @@ export const ReminderOverlay: React.FC<ReminderOverlayProps> = ({ onConfirm, rem
             className={`w-full p-5 rounded-3xl border-2 transition-all flex items-center justify-center gap-3 font-black ${
               isChecked 
                 ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-500 text-emerald-600' 
-                : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500'
+                : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-500'
             }`}
           >
             <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${

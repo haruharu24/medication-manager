@@ -240,12 +240,17 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // Guard against writing back the pre-load default state (empty arrays) over
+    // real data still sitting in localStorage: this effect's dependencies are
+    // all "new" on the very first render too, so without this check it can fire
+    // before the load effect above has applied what it read.
+    if (!settingsLoaded) return;
     localStorage.setItem('medications', JSON.stringify(medications));
     localStorage.setItem('logs', JSON.stringify(logs));
     localStorage.setItem('globalLogs', JSON.stringify(globalLogs));
     localStorage.setItem('conditions', JSON.stringify(conditions));
     localStorage.setItem('reminderSettings', JSON.stringify(reminderSettings));
-  }, [medications, logs, globalLogs, conditions, reminderSettings]);
+  }, [medications, logs, globalLogs, conditions, reminderSettings, settingsLoaded]);
 
   const addGlobalLog = (type: GlobalActionLog['type'], title: string, details?: string) => {
     const newLog: GlobalActionLog = { id: crypto.randomUUID(), timestamp: Date.now(), type, title, details };
@@ -455,9 +460,9 @@ const App: React.FC = () => {
 
   return (
     <div className="bg-slate-100 dark:bg-slate-800 min-h-screen max-w-md mx-auto shadow-2xl flex flex-col relative overflow-hidden">
-      <div className="flex-1 overflow-hidden relative">
+      <main className="flex-1 overflow-hidden relative">
         {view === 'home' && (
-          <HomeView 
+          <HomeView
             medications={medications} 
             logs={logs} 
             setLogs={setLogs} 
@@ -508,11 +513,14 @@ const App: React.FC = () => {
                     </div>
                     <div>
                       <p className="font-black text-slate-800 dark:text-slate-100">ダークモード</p>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">画面の配色を切り替え</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold">画面の配色を切り替え</p>
                     </div>
                   </div>
                   <button
                     onClick={toggleTheme}
+                    role="switch"
+                    aria-checked={theme === 'dark'}
+                    aria-label="ダークモード"
                     className={`w-12 h-6 rounded-full transition-colors relative ${theme === 'dark' ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}
                   >
                     <div className={`absolute top-1 w-4 h-4 bg-white dark:bg-slate-800 rounded-full transition-all ${theme === 'dark' ? 'left-7' : 'left-1'}`} />
@@ -528,11 +536,14 @@ const App: React.FC = () => {
                     </div>
                     <div>
                       <p className="font-black text-slate-800 dark:text-slate-100">強制リマインド</p>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">指定時間以降の起動時に警告</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold">指定時間以降の起動時に警告</p>
                     </div>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setReminderSettings(prev => ({ ...prev, enabled: !prev.enabled }))}
+                    role="switch"
+                    aria-checked={reminderSettings.enabled}
+                    aria-label="強制リマインド"
                     className={`w-12 h-6 rounded-full transition-colors relative ${reminderSettings.enabled ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}
                   >
                     <div className={`absolute top-1 w-4 h-4 bg-white dark:bg-slate-800 rounded-full transition-all ${reminderSettings.enabled ? 'left-7' : 'left-1'}`} />
@@ -541,7 +552,7 @@ const App: React.FC = () => {
 
                 {reminderSettings.enabled && (
                   <div className="flex items-center gap-3 pt-2 border-t border-slate-50 dark:border-slate-800">
-                    <Clock size={16} className="text-slate-400 dark:text-slate-500" />
+                    <Clock size={16} className="text-slate-500 dark:text-slate-500" />
                     <span className="text-sm font-bold text-slate-600 dark:text-slate-300">開始時間:</span>
                     <input
                       type="time"
@@ -579,7 +590,7 @@ const App: React.FC = () => {
               <button onClick={() => setView('report-setup')} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center"><FileDown size={24}/></div>
-                  <div className="text-left"><p className="text-lg">レポート作成</p><p className="text-xs text-slate-400 dark:text-slate-500 font-bold">PDF出力・印刷・共有</p></div>
+                  <div className="text-left"><p className="text-lg">レポート作成</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">PDF出力・印刷・共有</p></div>
                 </div>
                 <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
               </button>
@@ -593,7 +604,7 @@ const App: React.FC = () => {
                   <div className="w-12 h-12 bg-purple-50 dark:bg-purple-500/10 text-purple-600 rounded-2xl flex items-center justify-center"><ShieldAlert size={24}/></div>
                   <div className="text-left">
                     <p className="text-lg">飲み合わせチェック(AI)</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 font-bold">
+                    <p className="text-xs text-slate-500 dark:text-slate-500 font-bold">
                       {medications.filter(m => !m.isFolder).length < 2 ? 'お薬を2件以上登録すると使えます' : 'AIが併用リスクを確認します'}
                     </p>
                   </div>
@@ -603,22 +614,22 @@ const App: React.FC = () => {
               <div className="bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 shadow-sm divide-y divide-slate-50 dark:divide-slate-800 overflow-hidden">
                 <button onClick={handleExportBackup} className="w-full p-6 flex items-center gap-4 active:bg-slate-50 dark:active:bg-slate-700 transition-colors">
                   <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0"><Download size={22}/></div>
-                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">データをエクスポート</p><p className="text-xs text-slate-400 dark:text-slate-500 font-bold">全データをJSONファイルとして保存</p></div>
+                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">データをエクスポート</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">全データをJSONファイルとして保存</p></div>
                 </button>
                 <button onClick={() => importInputRef.current?.click()} className="w-full p-6 flex items-center gap-4 active:bg-slate-50 dark:active:bg-slate-700 transition-colors">
                   <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center shrink-0"><Upload size={22}/></div>
-                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">データをインポート</p><p className="text-xs text-slate-400 dark:text-slate-500 font-bold">バックアップファイルから復元(上書き)</p></div>
+                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">データをインポート</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">バックアップファイルから復元(上書き)</p></div>
                 </button>
                 <input ref={importInputRef} type="file" accept="application/json" onChange={handleImportFile} className="hidden" />
               </div>
 
-              <button onClick={() => { if(window.confirm('全データを削除しますか？')) { localStorage.clear(); location.reload(); }}} className="w-full p-4 bg-white dark:bg-slate-800 rounded-3xl border border-red-50 dark:border-red-500/20 text-red-500 font-bold flex items-center gap-3 active:scale-95 transition-transform">
+              <button onClick={() => { if(window.confirm('全データを削除しますか？')) { localStorage.clear(); location.reload(); }}} className="w-full p-4 bg-white dark:bg-slate-800 rounded-3xl border border-red-50 dark:border-red-500/20 text-red-600 font-bold flex items-center gap-3 active:scale-95 transition-transform">
                 <RotateCcw size={20} /> データリセット
               </button>
             </div>
           </div>
         )}
-      </div>
+      </main>
 
       <BottomNav currentView={view} onChange={setView} />
       

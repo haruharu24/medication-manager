@@ -24,7 +24,7 @@ const ScoreChart: React.FC<{ data: { date: string, score: number }[] }> = ({ dat
   
   if (data.length < 2) return (
     <div className="h-[150px] flex items-center justify-center bg-slate-50 dark:bg-slate-900 rounded-[32px] border border-dashed border-slate-200 dark:border-slate-700">
-      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">推移を表示するには2日以上の記録が必要です</p>
+      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-500 uppercase tracking-widest">推移を表示するには2日以上の記録が必要です</p>
     </div>
   );
 
@@ -105,7 +105,7 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
   return (
     <div className="flex flex-col h-full bg-white dark:bg-slate-800 overflow-y-auto pb-32 print:p-0">
       <div className="p-4 safe-top flex items-center justify-between border-b print:hidden sticky top-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl z-50">
-        <button onClick={onBack} className="p-2 text-slate-600 dark:text-slate-300"><ChevronLeft size={24}/></button>
+        <button onClick={onBack} aria-label="戻る" className="p-2 text-slate-600 dark:text-slate-300"><ChevronLeft size={24}/></button>
         <div className="flex gap-2">
           <button onClick={handleShare} className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full active:scale-90 transition-transform"><Share size={20}/></button>
           <button onClick={() => window.print()} className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-2 rounded-full font-black text-sm flex items-center gap-2 shadow-lg"><Printer size={16}/> PDF出力 / 印刷</button>
@@ -115,7 +115,7 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
       <div className="p-10 space-y-12 max-w-2xl mx-auto w-full print:p-0 print:max-w-none">
         <div className="text-center space-y-2 border-b-8 border-slate-900 dark:border-white pb-10">
           <h2 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter italic uppercase">Report</h2>
-          <p className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">{config.start.replace(/-/g, '/')} — {config.end.replace(/-/g, '/')}</p>
+          <p className="text-sm font-black text-slate-500 dark:text-slate-500 uppercase tracking-[0.2em]">{config.start.replace(/-/g, '/')} — {config.end.replace(/-/g, '/')}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-6">
@@ -130,7 +130,7 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
             </h3>
 
             {adherence.totalScheduled === 0 ? (
-              <p className="text-sm text-slate-400 dark:text-slate-500 font-bold text-center py-6">この期間に判定できる記録はありません</p>
+              <p className="text-sm text-slate-500 dark:text-slate-500 font-bold text-center py-6">この期間に判定できる記録はありません</p>
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-6">
@@ -143,7 +143,7 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
                     <div key={med.medicationId} className="p-6 bg-slate-50 dark:bg-slate-900 rounded-[32px] border border-slate-200 dark:border-slate-700 space-y-3">
                       <div className="flex items-center justify-between">
                         <h4 className="font-black text-slate-800 dark:text-slate-100">{med.title}</h4>
-                        <span className={`text-sm font-black ${med.adherenceRate < 80 ? 'text-red-500' : 'text-emerald-600'}`}>
+                        <span className={`text-sm font-black ${med.adherenceRate < 80 ? 'text-red-600' : 'text-emerald-600'}`}>
                           {med.adherenceRate}%
                         </span>
                       </div>
@@ -190,7 +190,7 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
                   <div key={dateStr} className="flex gap-6 p-6 bg-slate-50 dark:bg-slate-900 rounded-[32px] border border-slate-200 dark:border-slate-700">
                     <div className="w-16 shrink-0 text-center">
                       <p className="text-sm font-black text-slate-900 dark:text-white">{format(date, 'MM/dd')}</p>
-                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{format(date, '(EE)', { locale: ja })}</p>
+                      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-500">{format(date, '(EE)', { locale: ja })}</p>
                     </div>
                     <div className="flex-1 space-y-2">
                       <div className="flex items-center gap-2">
@@ -205,7 +205,7 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
           </section>
         )}
 
-        <div className="text-[10px] text-slate-300 dark:text-slate-600 text-center font-bold uppercase tracking-widest pt-20">
+        <div className="text-[10px] text-slate-500 dark:text-slate-600 text-center font-bold uppercase tracking-widest pt-20">
           Generated by MediMate Digital Health Platform
         </div>
       </div>
@@ -223,9 +223,18 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
   );
 };
 
+// Full literal class names on purpose — see the same note in ReportSetupView's
+// OptionRow. Tailwind's build-time scanner can't resolve `text-${color}`.
+const STAT_BOX_TEXT_CLASSES: Record<string, string> = {
+  'blue-600': 'text-blue-600',
+  'slate-900': 'text-slate-900 dark:text-white',
+  'emerald-600': 'text-emerald-600',
+  'red-500': 'text-red-600',
+};
+
 const StatBox = ({ label, value, color }: any) => (
-  <div className={`bg-slate-50 dark:bg-slate-900 p-8 rounded-[40px] text-center border-2 border-slate-100 dark:border-slate-700`}>
-    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 block">{label}</span>
-    <div className={`text-4xl font-black text-${color}`}>{value}</div>
+  <div className="bg-slate-50 dark:bg-slate-900 p-8 rounded-[40px] text-center border-2 border-slate-100 dark:border-slate-700">
+    <span className="text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest mb-2 block">{label}</span>
+    <div className={`text-4xl font-black ${STAT_BOX_TEXT_CLASSES[color] || STAT_BOX_TEXT_CLASSES['slate-900']}`}>{value}</div>
   </div>
 );

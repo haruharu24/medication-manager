@@ -15,6 +15,8 @@ View your app in AI Studio: https://ai.studio/apps/3483c948-33d1-401c-9131-7ef50
 
 1. Install dependencies:
    `npm install`
+
+   Styling is compiled at build time with Tailwind CSS (`tailwind.config.js` / `postcss.config.js` / `index.css`) rather than loaded from a CDN, so the app has no external runtime dependency for its UI framework and renders identically offline or in network-restricted CI.
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. (Optional, for the "服薬時間になったらプッシュ通知" reminder) Set `VITE_PUSH_SERVER_URL` in `.env.local` to point at the push server below. Defaults to `http://localhost:8787`.
 4. Run the app:
@@ -55,3 +57,18 @@ View your app in AI Studio: https://ai.studio/apps/3483c948-33d1-401c-9131-7ef50
 5. 未ログイン、または世帯未参加の場合は従来どおり端末内(localStorage)のみで動作する。
 
 アカウント・世帯・同期データは `server/data/accounts.json` にJSONファイルとして保存される(git管理外)。パスワードは常にハッシュ化して保存する。本番運用する場合はデータベースへの置き換えとHTTPS必須化を推奨。
+
+## テスト
+
+```
+npm install
+npm test              # ユニット・結合テスト(Vitest) — utils/, components/, server/ を1回実行
+npm run test:watch    # 上記をwatchモードで実行
+npm run test:e2e      # Playwright E2Eテスト。フロントエンド・バックエンドを自動起動する(初回は `npm --prefix server install` が必要)
+npm run test:a11y     # @axe-core/playwright によるアクセシビリティテストのみ実行
+npm run test:all      # test + test:e2e をまとめて実行
+```
+
+`e2e/` 配下のテストは `playwright.config.ts` の `webServer` 設定でフロントエンド(Vite)とバックエンド(`server/index.js`)を自動起動するため、事前に手動でサーバーを立ち上げておく必要はない。CI (`.github/workflows/test.yml`) では push / PR ごとに型チェック・ビルド・全テストが実行される。
+
+機能追加時のテスト方針は [CLAUDE.md](CLAUDE.md) を参照。

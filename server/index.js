@@ -190,7 +190,7 @@ const sendReminder = async (sub) => {
 
 // Every minute: fire the daily reminder for any subscription whose local time
 // matches its configured reminderTime, and deliver any snooze that just came due.
-cron.schedule('* * * * *', async () => {
+const cronTask = cron.schedule('* * * * *', async () => {
   const now = Date.now();
   const subs = getAllSubscriptions();
 
@@ -261,6 +261,14 @@ wss.on('connection', (ws) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`MediMate push server listening on http://localhost:${PORT}`);
-});
+// Only bind a port when this file is run directly (`node index.js`). When it's
+// imported by a test, the test controls if/when the server listens (usually on
+// an ephemeral port), so importing this module must never have that side effect.
+const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+if (isMainModule) {
+  server.listen(PORT, () => {
+    console.log(`MediMate push server listening on http://localhost:${PORT}`);
+  });
+}
+
+export { app, server, wss, cronTask };

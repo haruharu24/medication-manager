@@ -99,7 +99,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, 
     return (
       <div className="grid grid-cols-7 text-center gap-y-1 bg-white dark:bg-slate-800 pb-2">
         {WEEK_DAYS.map((d, i) => (
-          <div key={d} className={`text-[10px] font-bold pb-1 ${i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-slate-400 dark:text-slate-500'}`}>
+          <div key={d} className={`text-[10px] font-bold pb-1 ${i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-slate-600 dark:text-slate-500'}`}>
             {d}
           </div>
         ))}
@@ -140,7 +140,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, 
       <div className="bg-slate-50 dark:bg-slate-900 py-1.5 safe-top border-b border-slate-200 dark:border-slate-700 relative shrink-0">
         <h1 className="text-center font-bold text-slate-800 dark:text-slate-100 text-[10px]">MediMate</h1>
         <div className="absolute right-4 top-1/2 -translate-y-1/2">
-          <button onClick={() => setShowAddMenu(!showAddMenu)} className="bg-emerald-600 text-white px-3 py-1.5 rounded-full font-bold text-[10px] shadow-lg flex items-center gap-1 active:scale-95 transition-transform">
+          <button onClick={() => setShowAddMenu(!showAddMenu)} className="bg-emerald-700 text-white px-3 py-1.5 rounded-full font-bold text-[10px] shadow-lg flex items-center gap-1 active:scale-95 transition-transform">
             <Plus size={10} /> 追加
           </button>
           {showAddMenu && (
@@ -160,16 +160,16 @@ export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, 
       <div className="bg-white dark:bg-slate-800 px-4 pt-2 border-b border-slate-100 dark:border-slate-700 shrink-0 shadow-sm">
         <div className="flex justify-between items-center mb-2">
           <div className="flex items-center gap-1">
-            <button onClick={() => navigateCalendar('prev')} className="p-1 text-slate-400 dark:text-slate-500 active:text-slate-800 dark:active:text-slate-100 active:scale-90 transition-all"><ChevronLeft size={20} /></button>
+            <button onClick={() => navigateCalendar('prev')} aria-label="前へ" className="p-1 text-slate-600 dark:text-slate-500 active:text-slate-800 dark:active:text-slate-100 active:scale-90 transition-all"><ChevronLeft size={20} /></button>
             <h2 className="text-sm font-black text-slate-800 dark:text-slate-100 w-24 text-center">{format(displayDate, 'yyyy年 M月', { locale: ja })}</h2>
-            <button onClick={() => navigateCalendar('next')} className="p-1 text-slate-400 dark:text-slate-500 active:text-slate-800 dark:active:text-slate-100 active:scale-90 transition-all"><ChevronRight size={20} /></button>
+            <button onClick={() => navigateCalendar('next')} aria-label="次へ" className="p-1 text-slate-600 dark:text-slate-500 active:text-slate-800 dark:active:text-slate-100 active:scale-90 transition-all"><ChevronRight size={20} /></button>
           </div>
           <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
             {(['month', 'week', 'day'] as CalendarMode[]).map((m) => (
               <button 
                 key={m} 
                 onClick={() => setCalendarMode(m)} 
-                className={`px-3 py-0.5 text-[9px] font-bold rounded-md transition-all ${calendarMode === m ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-700' : 'text-slate-400 dark:text-slate-500'}`}
+                className={`px-3 py-0.5 text-[9px] font-bold rounded-md transition-all ${calendarMode === m ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-700' : 'text-slate-600 dark:text-slate-500'}`}
               >
                 {m === 'month' ? '月' : m === 'week' ? '週' : '日'}
               </button>
@@ -225,7 +225,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, 
         <div className="mb-2 px-1 border-l-4 border-emerald-500 pl-2 flex items-center justify-between">
           <h3 className="text-xs font-black text-slate-800 dark:text-slate-100">今日の服薬</h3>
           {weeklyAdherence.totalScheduled > 0 && (
-            <span className={`text-[10px] font-black ${weeklyAdherence.overallRate < 80 ? 'text-red-500' : 'text-slate-400 dark:text-slate-500'}`}>
+            <span className={`text-[10px] font-black ${weeklyAdherence.overallRate < 80 ? 'text-red-600' : 'text-slate-600 dark:text-slate-500'}`}>
               直近7日の達成率 {weeklyAdherence.overallRate}%
               {weeklyAdherence.totalMissed > 0 && `(飲み忘れ${weeklyAdherence.totalMissed}回)`}
             </span>
@@ -235,7 +235,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, 
         <div className="space-y-1.5 mb-5">
           {medications.filter(m => !m.isFolder).length === 0 ? (
             <div className="py-4 text-center bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
-              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500">お薬未登録</p>
+              <p className="text-[10px] font-bold text-slate-600 dark:text-slate-500">お薬未登録</p>
             </div>
           ) : (
             medications.filter(m => !m.isFolder).map(med => (
@@ -259,14 +259,14 @@ export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, 
                   <Check size={20} strokeWidth={3} />
                 </button>
                 <div className="flex-1 min-w-0" onClick={() => !isEditMode && onEditMed(med)}>
-                  <h4 className={`font-black text-sm tracking-tight truncate ${isCompleted(med.id, selectedDate) ? 'text-slate-300 dark:text-slate-600 line-through' : 'text-slate-800 dark:text-slate-100'}`}>
+                  <h4 className={`font-black text-sm tracking-tight truncate ${isCompleted(med.id, selectedDate) ? 'text-slate-500 dark:text-slate-600 line-through' : 'text-slate-800 dark:text-slate-100'}`}>
                     {med.title}
                   </h4>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900 px-1 py-0.5 rounded leading-none">
+                    <span className="text-[8px] font-black text-slate-600 dark:text-slate-500 bg-slate-50 dark:bg-slate-900 px-1 py-0.5 rounded leading-none">
                       {med.label}
                     </span>
-                    <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 leading-none">
+                    <span className="text-[8px] font-bold text-slate-600 dark:text-slate-500 leading-none">
                       {med.dosage}{med.unit}
                     </span>
                   </div>
