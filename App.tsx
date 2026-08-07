@@ -13,13 +13,14 @@ import { MedicationListView } from './features/meds/MedicationListView';
 import { ReportSetupView } from './features/report/ReportSetupView';
 import { ReportPreviewView } from './features/report/ReportPreviewView';
 import { ReminderOverlay } from './components/ReminderOverlay';
-import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload, ShieldAlert } from 'lucide-react';
+import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload, ShieldAlert, Moon, Sun } from 'lucide-react';
 // Fix: Import GoogleGenAI and Type for AI-powered scanning
 import { GoogleGenAI, Type } from "@google/genai";
 import { markMedicationTaken } from './utils/medicationActions';
 import { drainPendingActions, PendingAction } from './utils/pendingActionsDb';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush } from './utils/push';
 import { buildBackup, downloadBackup, parseBackupFile } from './utils/backup';
+import { Theme, getStoredTheme, applyTheme } from './utils/theme';
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>('home');
@@ -53,6 +54,13 @@ const App: React.FC = () => {
   const [pushStatus, setPushStatus] = useState<string | null>(null);
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [showInteractionCheck, setShowInteractionCheck] = useState(false);
+  const [theme, setTheme] = useState<Theme>(getStoredTheme);
+
+  const toggleTheme = () => {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    applyTheme(next);
+  };
 
   // Keeps the pending-action drain logic (which can fire from a service worker
   // "message" event at any time) reading fresh state instead of a stale closure.
@@ -302,7 +310,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="bg-slate-100 min-h-screen max-w-md mx-auto shadow-2xl flex flex-col relative overflow-hidden">
+    <div className="bg-slate-100 dark:bg-slate-800 min-h-screen max-w-md mx-auto shadow-2xl flex flex-col relative overflow-hidden">
       <div className="flex-1 overflow-hidden relative">
         {view === 'home' && (
           <HomeView 
@@ -345,86 +353,106 @@ const App: React.FC = () => {
           />
         )}
         {view === 'settings' && (
-          <div className="flex flex-col h-full bg-slate-50 animate-in fade-in duration-300">
-            <div className="bg-slate-50 py-3 safe-top border-b border-slate-200"><h1 className="text-center font-bold text-slate-800">設定</h1></div>
+          <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 animate-in fade-in duration-300">
+            <div className="bg-slate-50 dark:bg-slate-900 py-3 safe-top border-b border-slate-200 dark:border-slate-700"><h1 className="text-center font-bold text-slate-800 dark:text-slate-100">設定</h1></div>
             <div className="p-5 space-y-4">
-              <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-sm space-y-4">
+              <div className="bg-white dark:bg-slate-800 rounded-[32px] p-6 border border-slate-100 dark:border-slate-700 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center">
+                    <div className="w-10 h-10 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl flex items-center justify-center">
+                      {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
+                    </div>
+                    <div>
+                      <p className="font-black text-slate-800 dark:text-slate-100">ダークモード</p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">画面の配色を切り替え</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={toggleTheme}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${theme === 'dark' ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white dark:bg-slate-800 rounded-full transition-all ${theme === 'dark' ? 'left-7' : 'left-1'}`} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-slate-800 rounded-[32px] p-6 border border-slate-100 dark:border-slate-700 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-amber-50 dark:bg-amber-500/10 text-amber-500 rounded-xl flex items-center justify-center">
                       <Bell size={20} />
                     </div>
                     <div>
-                      <p className="font-black text-slate-800">強制リマインド</p>
-                      <p className="text-[10px] text-slate-400 font-bold">指定時間以降の起動時に警告</p>
+                      <p className="font-black text-slate-800 dark:text-slate-100">強制リマインド</p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">指定時間以降の起動時に警告</p>
                     </div>
                   </div>
                   <button 
                     onClick={() => setReminderSettings(prev => ({ ...prev, enabled: !prev.enabled }))}
-                    className={`w-12 h-6 rounded-full transition-colors relative ${reminderSettings.enabled ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${reminderSettings.enabled ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}
                   >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${reminderSettings.enabled ? 'left-7' : 'left-1'}`} />
+                    <div className={`absolute top-1 w-4 h-4 bg-white dark:bg-slate-800 rounded-full transition-all ${reminderSettings.enabled ? 'left-7' : 'left-1'}`} />
                   </button>
                 </div>
 
                 {reminderSettings.enabled && (
-                  <div className="flex items-center gap-3 pt-2 border-t border-slate-50">
-                    <Clock size={16} className="text-slate-400" />
-                    <span className="text-sm font-bold text-slate-600">開始時間:</span>
+                  <div className="flex items-center gap-3 pt-2 border-t border-slate-50 dark:border-slate-800">
+                    <Clock size={16} className="text-slate-400 dark:text-slate-500" />
+                    <span className="text-sm font-bold text-slate-600 dark:text-slate-300">開始時間:</span>
                     <input
                       type="time"
                       value={reminderSettings.time}
                       onChange={(e) => setReminderSettings(prev => ({ ...prev, time: e.target.value }))}
-                      className="bg-slate-50 border-none rounded-lg px-3 py-1 font-black text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                      className="bg-slate-50 dark:bg-slate-900 border-none rounded-lg px-3 py-1 font-black text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none"
                     />
                   </div>
                 )}
 
                 {reminderSettings.enabled && pushStatus && (
-                  <div className="flex items-start gap-2 pt-2 border-t border-slate-50 text-amber-600">
+                  <div className="flex items-start gap-2 pt-2 border-t border-slate-50 dark:border-slate-800 text-amber-600">
                     <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                     <p className="text-[11px] font-bold leading-tight">{pushStatus}(アプリを開いている間の通知チェックのみ有効です)</p>
                   </div>
                 )}
               </div>
 
-              <button onClick={() => setView('report-setup')} className="w-full p-6 bg-white rounded-[32px] border border-slate-100 flex items-center justify-between font-black text-slate-800 shadow-sm active:scale-95 transition-all">
+              <button onClick={() => setView('report-setup')} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center"><FileDown size={24}/></div>
-                  <div className="text-left"><p className="text-lg">レポート作成</p><p className="text-xs text-slate-400 font-bold">PDF出力・印刷・共有</p></div>
+                  <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center"><FileDown size={24}/></div>
+                  <div className="text-left"><p className="text-lg">レポート作成</p><p className="text-xs text-slate-400 dark:text-slate-500 font-bold">PDF出力・印刷・共有</p></div>
                 </div>
-                <ChevronRight size={20} className="text-slate-300" />
+                <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
               </button>
 
               <button
                 onClick={() => setShowInteractionCheck(true)}
                 disabled={medications.filter(m => !m.isFolder).length < 2}
-                className="w-full p-6 bg-white rounded-[32px] border border-slate-100 flex items-center justify-between font-black text-slate-800 shadow-sm active:scale-95 transition-all disabled:opacity-50"
+                className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all disabled:opacity-50"
               >
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center"><ShieldAlert size={24}/></div>
+                  <div className="w-12 h-12 bg-purple-50 dark:bg-purple-500/10 text-purple-600 rounded-2xl flex items-center justify-center"><ShieldAlert size={24}/></div>
                   <div className="text-left">
                     <p className="text-lg">飲み合わせチェック(AI)</p>
-                    <p className="text-xs text-slate-400 font-bold">
+                    <p className="text-xs text-slate-400 dark:text-slate-500 font-bold">
                       {medications.filter(m => !m.isFolder).length < 2 ? 'お薬を2件以上登録すると使えます' : 'AIが併用リスクを確認します'}
                     </p>
                   </div>
                 </div>
-                <ChevronRight size={20} className="text-slate-300" />
+                <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
               </button>
-              <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm divide-y divide-slate-50 overflow-hidden">
-                <button onClick={handleExportBackup} className="w-full p-6 flex items-center gap-4 active:bg-slate-50 transition-colors">
-                  <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0"><Download size={22}/></div>
-                  <div className="text-left"><p className="font-black text-slate-800">データをエクスポート</p><p className="text-xs text-slate-400 font-bold">全データをJSONファイルとして保存</p></div>
+              <div className="bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 shadow-sm divide-y divide-slate-50 dark:divide-slate-800 overflow-hidden">
+                <button onClick={handleExportBackup} className="w-full p-6 flex items-center gap-4 active:bg-slate-50 dark:active:bg-slate-700 transition-colors">
+                  <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0"><Download size={22}/></div>
+                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">データをエクスポート</p><p className="text-xs text-slate-400 dark:text-slate-500 font-bold">全データをJSONファイルとして保存</p></div>
                 </button>
-                <button onClick={() => importInputRef.current?.click()} className="w-full p-6 flex items-center gap-4 active:bg-slate-50 transition-colors">
-                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0"><Upload size={22}/></div>
-                  <div className="text-left"><p className="font-black text-slate-800">データをインポート</p><p className="text-xs text-slate-400 font-bold">バックアップファイルから復元(上書き)</p></div>
+                <button onClick={() => importInputRef.current?.click()} className="w-full p-6 flex items-center gap-4 active:bg-slate-50 dark:active:bg-slate-700 transition-colors">
+                  <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center shrink-0"><Upload size={22}/></div>
+                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">データをインポート</p><p className="text-xs text-slate-400 dark:text-slate-500 font-bold">バックアップファイルから復元(上書き)</p></div>
                 </button>
                 <input ref={importInputRef} type="file" accept="application/json" onChange={handleImportFile} className="hidden" />
               </div>
 
-              <button onClick={() => { if(window.confirm('全データを削除しますか？')) { localStorage.clear(); location.reload(); }}} className="w-full p-4 bg-white rounded-3xl border border-red-50 text-red-500 font-bold flex items-center gap-3 active:scale-95 transition-transform">
+              <button onClick={() => { if(window.confirm('全データを削除しますか？')) { localStorage.clear(); location.reload(); }}} className="w-full p-4 bg-white dark:bg-slate-800 rounded-3xl border border-red-50 dark:border-red-500/20 text-red-500 font-bold flex items-center gap-3 active:scale-95 transition-transform">
                 <RotateCcw size={20} /> データリセット
               </button>
             </div>

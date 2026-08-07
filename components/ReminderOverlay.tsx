@@ -15,18 +15,18 @@ export const ReminderOverlay: React.FC<ReminderOverlayProps> = ({ onConfirm, rem
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-white w-full max-w-sm rounded-[40px] overflow-hidden shadow-2xl border border-slate-100"
+        className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[40px] overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-700"
       >
         <div className="p-8 flex flex-col items-center text-center space-y-6">
-          <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center text-amber-500 animate-pulse">
+          <div className="w-20 h-20 bg-amber-50 dark:bg-amber-500/10 rounded-full flex items-center justify-center text-amber-500 animate-pulse">
             <ShieldAlert size={40} />
           </div>
           
           <div className="space-y-2">
-            <h2 className="text-2xl font-black text-slate-800 leading-tight">
+            <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 leading-tight">
               服薬確認が必要です
             </h2>
-            <p className="text-slate-500 font-bold text-sm">
+            <p className="text-slate-500 dark:text-slate-400 font-bold text-sm">
               {reminderTime} 以降のアプリ起動です。<br />
               お薬の飲み忘れはありませんか？
             </p>
@@ -36,12 +36,12 @@ export const ReminderOverlay: React.FC<ReminderOverlayProps> = ({ onConfirm, rem
             onClick={() => setIsChecked(!isChecked)}
             className={`w-full p-5 rounded-3xl border-2 transition-all flex items-center justify-center gap-3 font-black ${
               isChecked 
-                ? 'bg-emerald-50 border-emerald-500 text-emerald-600' 
-                : 'bg-slate-50 border-slate-200 text-slate-400'
+                ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-500 text-emerald-600' 
+                : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500'
             }`}
           >
             <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-              isChecked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'
+              isChecked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 dark:border-slate-600'
             }`}>
               {isChecked && <CheckCircle2 size={16} className="text-white" />}
             </div>
@@ -53,15 +53,15 @@ export const ReminderOverlay: React.FC<ReminderOverlayProps> = ({ onConfirm, rem
             onClick={onConfirm}
             className={`w-full py-5 rounded-3xl font-black text-lg shadow-lg transition-all active:scale-95 ${
               isChecked 
-                ? 'bg-slate-800 text-white shadow-slate-200' 
-                : 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-900 shadow-slate-200'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed'
             }`}
           >
             アプリをはじめる
           </button>
         </div>
         
-        <div className="bg-amber-50 p-4 text-center">
+        <div className="bg-amber-50 dark:bg-amber-500/10 p-4 text-center">
           <p className="text-[10px] text-amber-600 font-black uppercase tracking-widest flex items-center justify-center gap-2">
             <AlertTriangle size={12} /> 飲み忘れ防止のための強制リマインド機能です
           </p>
