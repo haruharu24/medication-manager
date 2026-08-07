@@ -6,6 +6,7 @@ import { MedicationForm } from './components/MedicationForm';
 import { CameraModal } from './components/CameraModal';
 import { QuickLogSheet } from './components/QuickLogSheet';
 import { InteractionCheckModal } from './components/InteractionCheckModal';
+import { AccountPanel } from './components/AccountPanel';
 import { Medication, MedicationLog, ViewMode, DailyCondition, GlobalActionLog, ReportConfig, ReminderSettings } from './types';
 import { UNITS, LABELS } from './constants';
 import { HomeView } from './features/home/HomeView';
@@ -21,6 +22,19 @@ import { drainPendingActions, PendingAction } from './utils/pendingActionsDb';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush } from './utils/push';
 import { buildBackup, downloadBackup, parseBackupFile } from './utils/backup';
 import { Theme, getStoredTheme, applyTheme } from './utils/theme';
+import { StoredAuth, getStoredAuth, clearStoredAuth, login as apiLogin, register as apiRegister } from './utils/auth';
+import {
+  Household,
+  HouseholdMember,
+  fetchMe,
+  createHousehold as apiCreateHousehold,
+  joinHousehold as apiJoinHousehold,
+  leaveHousehold as apiLeaveHousehold,
+  fetchMembers,
+  fetchHouseholdData,
+  pushHouseholdData,
+  connectHouseholdSocket,
+} from './utils/household';
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>('home');
@@ -60,6 +74,136 @@ const App: React.FC = () => {
     const next: Theme = theme === 'dark' ? 'light' : 'dark';
     setTheme(next);
     applyTheme(next);
+  };
+
+  // --- Account / household (family) sync ---
+  const [auth, setAuth] = useState<StoredAuth | null>(() => getStoredAuth());
+  const [households, setHouseholds] = useState<Household[]>([]);
+  const [activeHouseholdId, setActiveHouseholdIdState] = useState<string | null>(() => localStorage.getItem('activeHouseholdId'));
+  const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  const setActiveHouseholdId = (id: string | null) => {
+    setActiveHouseholdIdState(id);
+    if (id) localStorage.setItem('activeHouseholdId', id);
+    else localStorage.removeItem('activeHouseholdId');
+  };
+
+  // Set right before applying data pulled from the server so the debounced-push
+  // effect below doesn't immediately echo it straight back.
+  const suppressNextPushRef = useRef(false);
+  const initialSyncDoneRef = useRef(false);
+
+  const applyRemoteData = (data: { medications: Medication[]; logs: MedicationLog[]; globalLogs: GlobalActionLog[]; conditions: DailyCondition[] }) => {
+    suppressNextPushRef.current = true;
+    setMedications(data.medications || []);
+    setLogs(data.logs || []);
+    setGlobalLogs(data.globalLogs || []);
+    setConditions(data.conditions || []);
+  };
+
+  const refreshHouseholds = useCallback(async (currentAuth: StoredAuth) => {
+    const { households: list } = await fetchMe(currentAuth.token);
+    setHouseholds(list);
+    return list;
+  }, []);
+
+  useEffect(() => {
+    if (!auth) {
+      setHouseholds([]);
+      setHouseholdMembers([]);
+      return;
+    }
+    refreshHouseholds(auth).catch(() => {});
+  }, [auth, refreshHouseholds]);
+
+  useEffect(() => {
+    if (!auth || !activeHouseholdId) {
+      setHouseholdMembers([]);
+      return;
+    }
+    fetchMembers(auth.token, activeHouseholdId).then(res => setHouseholdMembers(res.members)).catch(() => {});
+  }, [auth, activeHouseholdId]);
+
+  // Initial sync (pull existing shared data, or bootstrap the household with this
+  // device's current data) + live updates over WebSocket while a household is active.
+  useEffect(() => {
+    if (!settingsLoaded || !auth || !activeHouseholdId) return;
+    let cancelled = false;
+    initialSyncDoneRef.current = false;
+    setSyncStatus('syncing');
+
+    (async () => {
+      try {
+        const { data, updatedAt } = await fetchHouseholdData(auth.token, activeHouseholdId);
+        if (cancelled) return;
+        if (updatedAt && data) {
+          applyRemoteData(data);
+        } else {
+          await pushHouseholdData(auth.token, activeHouseholdId, { medications, logs, globalLogs, conditions });
+        }
+        if (!cancelled) { setSyncStatus('synced'); setSyncError(null); }
+      } catch (e) {
+        if (!cancelled) { setSyncStatus('error'); setSyncError(e instanceof Error ? e.message : '同期に失敗しました'); }
+      } finally {
+        if (!cancelled) initialSyncDoneRef.current = true;
+      }
+    })();
+
+    const disconnect = connectHouseholdSocket(auth.token, activeHouseholdId, () => {
+      fetchHouseholdData(auth.token, activeHouseholdId)
+        .then(({ data, updatedAt }) => { if (updatedAt && data) applyRemoteData(data); })
+        .catch(() => {});
+    });
+
+    return () => { cancelled = true; disconnect(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsLoaded, auth, activeHouseholdId]);
+
+  // Push local changes to the shared household data after a short quiet period.
+  useEffect(() => {
+    if (!settingsLoaded || !auth || !activeHouseholdId || !initialSyncDoneRef.current) return;
+    if (suppressNextPushRef.current) { suppressNextPushRef.current = false; return; }
+
+    const timer = setTimeout(() => {
+      setSyncStatus('syncing');
+      pushHouseholdData(auth.token, activeHouseholdId, { medications, logs, globalLogs, conditions })
+        .then(() => { setSyncStatus('synced'); setSyncError(null); })
+        .catch(e => { setSyncStatus('error'); setSyncError(e instanceof Error ? e.message : '同期に失敗しました'); });
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [medications, logs, globalLogs, conditions, settingsLoaded, auth, activeHouseholdId]);
+
+  const handleLogin = async (email: string, password: string) => { setAuth(await apiLogin(email, password)); };
+  const handleRegister = async (email: string, password: string) => { setAuth(await apiRegister(email, password)); };
+  const handleLogout = () => {
+    clearStoredAuth();
+    setAuth(null);
+    setActiveHouseholdId(null);
+  };
+
+  const handleCreateHousehold = async (name: string) => {
+    if (!auth) return;
+    const { household } = await apiCreateHousehold(auth.token, name);
+    await refreshHouseholds(auth);
+    setActiveHouseholdId(household.id);
+  };
+
+  const handleJoinHousehold = async (code: string) => {
+    if (!auth) return;
+    const { household } = await apiJoinHousehold(auth.token, code);
+    await refreshHouseholds(auth);
+    setActiveHouseholdId(household.id);
+  };
+
+  const handleLeaveHousehold = async () => {
+    if (!auth || !activeHouseholdId) return;
+    await apiLeaveHousehold(auth.token, activeHouseholdId);
+    await refreshHouseholds(auth);
+    setActiveHouseholdId(null);
+    setSyncStatus('idle');
   };
 
   // Keeps the pending-action drain logic (which can fire from a service worker
@@ -415,6 +559,22 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              <AccountPanel
+                auth={auth}
+                households={households}
+                activeHouseholdId={activeHouseholdId}
+                members={householdMembers}
+                syncStatus={syncStatus}
+                syncError={syncError}
+                onLogin={handleLogin}
+                onRegister={handleRegister}
+                onLogout={handleLogout}
+                onCreateHousehold={handleCreateHousehold}
+                onJoinHousehold={handleJoinHousehold}
+                onSelectHousehold={setActiveHouseholdId}
+                onLeaveHousehold={handleLeaveHousehold}
+              />
 
               <button onClick={() => setView('report-setup')} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
                 <div className="flex items-center gap-4">

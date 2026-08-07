@@ -31,6 +31,10 @@ View your app in AI Studio: https://ai.studio/apps/3483c948-33d1-401c-9131-7ef50
    npm run generate-vapid
    ```
 2. `server/.env.example` を `server/.env` にコピーし、生成した `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` を貼り付ける。`CORS_ORIGIN` はフロントエンドのURL(開発時は `http://localhost:3000`)、`PUBLIC_SERVER_URL` はこのサーバー自身の外部URLに合わせて設定する。
+   また `JWT_SECRET` に以下で生成したランダムな文字列を設定する(家族共有ログインのセッション署名に使用):
+   ```
+   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+   ```
 3. サーバーを起動:
    ```
    npm start
@@ -39,3 +43,15 @@ View your app in AI Studio: https://ai.studio/apps/3483c948-33d1-401c-9131-7ef50
 5. アプリの「設定」画面で「強制リマインド」をONにすると、通知の許可を求められたのちサーバーに購読情報が登録され、指定時刻に毎日プッシュ通知が届くようになる。通知の「飲んだ」ボタンからアプリを開かずそのまま記録できる。
 
 購読データは `server/data/subscriptions.json` にJSONファイルとして保存される(git管理外)。本番運用する場合はデータベースへの置き換えを推奨。
+
+## 家族/介護者との共有(アカウント・世帯同期)
+
+同じ `server/` がアカウント登録・ログインと「世帯」単位のデータ同期も兼ねる。
+
+1. 設定画面の「家族と共有」からメールアドレス・パスワードでアカウントを作成(または既存アカウントでログイン)。
+2. 「新しい世帯を作る」で世帯を作成すると、招待コード(8桁の英数字)が発行される。
+3. 家族側の端末で同じサーバーにアカウント登録し、発行された招待コードで「招待コードで参加」する。
+4. 同じ世帯に参加している端末同士は、服薬記録・お薬リスト・体調記録・履歴(services `medications` / `logs` / `globalLogs` / `conditions`)がサーバー経由でリアルタイムに同期される(WebSocket)。リマインダー時刻などの通知設定は端末ごとの個人設定のままで同期対象に含まれない。
+5. 未ログイン、または世帯未参加の場合は従来どおり端末内(localStorage)のみで動作する。
+
+アカウント・世帯・同期データは `server/data/accounts.json` にJSONファイルとして保存される(git管理外)。パスワードは常にハッシュ化して保存する。本番運用する場合はデータベースへの置き換えとHTTPS必須化を推奨。
