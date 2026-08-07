@@ -2,11 +2,13 @@
 import React, { useState } from 'react';
 import { format, eachDayOfInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameDay, isToday, addMonths, addWeeks, addDays, subMonths, subWeeks, subDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Plus, Camera, FileText, Check, Edit3, Save, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Camera, FileText, Check, Edit3, Save, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 import { HealthCard } from '../../components/HealthCard';
 import { Medication, MedicationLog, DailyCondition, CalendarMode } from '../../types';
 import { WEEK_DAYS } from '../../constants';
 import { isMedicationTaken, toggleMedicationTaken } from '../../utils/medicationActions';
+import { getStockLevel } from '../../utils/stock';
+import { getAdherenceSummary } from '../../utils/adherence';
 
 interface HomeViewProps {
   medications: Medication[];
@@ -30,6 +32,8 @@ export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, 
 
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
   const currentCondition = conditions.find(c => c.dateStr === dateStr) || { dateStr, score: 0, memo: '' };
+  const lowStockMeds = medications.filter(m => !m.isFolder && getStockLevel(m) !== 'ok');
+  const weeklyAdherence = getAdherenceSummary(medications, logs, format(subDays(new Date(), 7), 'yyyy-MM-dd'), format(new Date(), 'yyyy-MM-dd'));
 
   const updateCondition = (updates: Partial<DailyCondition>) => {
     if (!isEditMode) return;
@@ -177,6 +181,28 @@ export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, 
 
       {/* メインコンテンツエリア */}
       <div className="flex-1 overflow-y-auto px-4 pb-24 pt-3 no-scrollbar">
+        {/* 在庫アラート */}
+        {lowStockMeds.length > 0 && (
+          <div className="mb-3 p-3 rounded-2xl bg-amber-50 border border-amber-100 space-y-1.5">
+            <div className="flex items-center gap-1.5 text-amber-600">
+              <AlertTriangle size={14} />
+              <h3 className="text-[11px] font-black">在庫が少ないお薬があります</h3>
+            </div>
+            <div className="space-y-1">
+              {lowStockMeds.map(med => (
+                <button
+                  key={med.id}
+                  onClick={() => onEditMed(med)}
+                  className={`w-full flex items-center justify-between px-2 py-1 rounded-lg active:bg-amber-100 transition-colors ${getStockLevel(med) === 'empty' ? 'text-red-600' : 'text-amber-700'}`}
+                >
+                  <span className="text-xs font-bold">{med.title}</span>
+                  <span className="text-[10px] font-black">{getStockLevel(med) === 'empty' ? '在庫切れ' : `残り${med.stock}${med.unit}`}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 操作ボタンエリア */}
         <div className="flex justify-end mb-3 px-1">
           <button 
@@ -196,8 +222,14 @@ export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, 
         </div>
 
         {/* 1. 服薬タスク（最優先） */}
-        <div className="mb-2 px-1 border-l-4 border-emerald-500 pl-2">
+        <div className="mb-2 px-1 border-l-4 border-emerald-500 pl-2 flex items-center justify-between">
           <h3 className="text-xs font-black text-slate-800">今日の服薬</h3>
+          {weeklyAdherence.totalScheduled > 0 && (
+            <span className={`text-[10px] font-black ${weeklyAdherence.overallRate < 80 ? 'text-red-500' : 'text-slate-400'}`}>
+              直近7日の達成率 {weeklyAdherence.overallRate}%
+              {weeklyAdherence.totalMissed > 0 && `(飲み忘れ${weeklyAdherence.totalMissed}回)`}
+            </span>
+          )}
         </div>
 
         <div className="space-y-1.5 mb-5">

@@ -2,8 +2,22 @@
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Pill, History, Plus, Camera, FileText, Edit2, ChevronDown, Package, FolderOpen } from 'lucide-react';
+import { Pill, History, Plus, Camera, FileText, Edit2, ChevronDown, Package, FolderOpen, AlertTriangle } from 'lucide-react';
 import { Medication, GlobalActionLog } from '../../types';
+import { getStockLevel } from '../../utils/stock';
+
+const StockBadge: React.FC<{ med: Medication }> = ({ med }) => {
+  const level = getStockLevel(med);
+  if (level === 'ok') {
+    return <p className="text-[10px] text-slate-400 font-bold uppercase">{med.dosage}{med.unit} / 在庫: {med.stock}</p>;
+  }
+  return (
+    <p className={`text-[10px] font-black uppercase flex items-center gap-1 ${level === 'empty' ? 'text-red-500' : 'text-amber-500'}`}>
+      <AlertTriangle size={11} />
+      {med.dosage}{med.unit} / 在庫: {med.stock} {level === 'empty' ? '(在庫切れ)' : '(残りわずか)'}
+    </p>
+  );
+};
 
 interface MedicationListViewProps {
   medications: Medication[];
@@ -46,7 +60,7 @@ export const MedicationListView: React.FC<MedicationListViewProps> = ({
         </div>
         <div>
           <h3 className="font-bold text-slate-800 text-sm">{med.title}</h3>
-          <p className="text-[10px] text-slate-400 font-bold uppercase">{med.dosage}{med.unit} / 在庫: {med.stock}</p>
+          <StockBadge med={med} />
         </div>
       </div>
       <Edit2 size={14} className="text-slate-300" />
@@ -138,7 +152,7 @@ export const MedicationListView: React.FC<MedicationListViewProps> = ({
                       </div>
                       <div>
                         <h3 className="font-bold text-slate-800">{med.title}</h3>
-                        <p className="text-[10px] font-black text-slate-400 uppercase">{med.dosage}{med.unit} ・ 残り {med.stock}</p>
+                        <StockBadge med={med} />
                       </div>
                     </div>
                     <Edit2 size={16} className="text-slate-300" />

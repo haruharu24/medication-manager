@@ -20,6 +20,7 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const DOSAGE_OPTIONS = [0.1, 0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 10];
 const STOCK_OPTIONS = [0, 5, 7, 10, 14, 21, 28, 30, 60, 90, 100];
+const LOW_STOCK_THRESHOLD_OPTIONS = [1, 2, 3, 5, 7, 10, 14];
 
 const ScrollWheel: React.FC<{ 
   items: number[]; 
@@ -70,6 +71,7 @@ export const MedicationForm: React.FC<MedicationFormProps> = ({ initialData, onS
   const [unit, setUnit] = useState<UnitType>(initialData?.unit || '錠');
   const [label, setLabel] = useState<LabelType>(initialData?.label || '朝食後');
   const [stock, setStock] = useState(initialData?.stock?.toString() || '0');
+  const [lowStockThreshold, setLowStockThreshold] = useState((initialData?.lowStockThreshold ?? 3).toString());
   const [memo, setMemo] = useState(initialData?.memo || '');
   const [notificationTime, setNotificationTime] = useState(initialData?.notificationTime || '');
   const [startDateStr, setStartDateStr] = useState(format(initialData?.startDate || Date.now(), 'yyyy-MM-dd'));
@@ -92,6 +94,7 @@ export const MedicationForm: React.FC<MedicationFormProps> = ({ initialData, onS
       unit,
       label,
       stock: parseInt(stock) || 0,
+      lowStockThreshold: parseInt(lowStockThreshold) || 3,
       memo,
       notificationTime: notificationTime || undefined,
       color: 'emerald',
@@ -174,6 +177,14 @@ export const MedicationForm: React.FC<MedicationFormProps> = ({ initialData, onS
                   <button onClick={() => setIsTimePickerOpen(true)} className="w-full text-left text-lg font-bold text-slate-800">{notificationTime || '--:--'}</button>
                   <Clock size={14} className="absolute right-4 bottom-6 text-slate-400" />
                 </div>
+              </div>
+
+              <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 relative">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">在庫アラート(残り何回で警告)</label>
+                <select value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} className="w-full bg-transparent text-lg font-bold text-slate-800 outline-none appearance-none">
+                  {LOW_STOCK_THRESHOLD_OPTIONS.map(t => <option key={t} value={t}>残り{t}回分</option>)}
+                </select>
+                <ChevronDown size={14} className="absolute right-4 bottom-6 text-slate-400" />
               </div>
             </>
           )}

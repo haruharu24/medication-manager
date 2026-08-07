@@ -30,6 +30,9 @@ export interface Medication {
   isFolder: boolean;
   parentId?: string;
   folderType?: 'multi-dose' | 'one-pack';
+  // Warn when the remaining stock drops to this many doses or fewer. Defaults to
+  // DEFAULT_LOW_STOCK_DOSES (utils/stock.ts) when unset.
+  lowStockThreshold?: number;
 }
 
 export interface MedicationLog {

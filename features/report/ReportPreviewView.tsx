@@ -2,8 +2,9 @@
 import React from 'react';
 import { format, parse, isWithinInterval, eachDayOfInterval } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { ChevronLeft, Share, Printer, Smile, Pill, History, TrendingUp } from 'lucide-react';
+import { ChevronLeft, Share, Printer, Smile, Pill, History, TrendingUp, AlertTriangle } from 'lucide-react';
 import { ReportConfig, Medication, MedicationLog, DailyCondition, GlobalActionLog } from '../../types';
+import { getAdherenceSummary } from '../../utils/adherence';
 
 interface ReportPreviewViewProps {
   config: ReportConfig;
@@ -83,9 +84,11 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
     return { date: dStr, score: cond?.score || 0 };
   }).filter(d => d.score > 0);
 
-  const avgScore = chartData.length > 0 
+  const avgScore = chartData.length > 0
     ? (chartData.reduce((acc, curr) => acc + curr.score, 0) / chartData.length).toFixed(1)
     : "0.0";
+
+  const adherence = getAdherenceSummary(medications, logs, config.start, config.end);
 
   const handleShare = async () => {
     if (navigator.share) {
@@ -119,6 +122,54 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
           <StatBox label="平均スコア" value={avgScore} color="blue-600" />
           <StatBox label="記録日数" value={`${chartData.length}日`} color="slate-900" />
         </div>
+
+        {config.includeMeds && (
+          <section className="space-y-8">
+            <h3 className="text-2xl font-black text-slate-900 flex items-center gap-3 border-b-2 border-slate-100 pb-4">
+              <Pill size={28} className="text-emerald-600" /> 服薬達成記録
+            </h3>
+
+            {adherence.totalScheduled === 0 ? (
+              <p className="text-sm text-slate-400 font-bold text-center py-6">この期間に判定できる記録はありません</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-6">
+                  <StatBox label="全体達成率" value={`${adherence.overallRate}%`} color="emerald-600" />
+                  <StatBox label="飲み忘れ" value={`${adherence.totalMissed}回`} color="red-500" />
+                </div>
+
+                <div className="space-y-3">
+                  {adherence.perMedication.filter(m => m.scheduledDays > 0).map(med => (
+                    <div key={med.medicationId} className="p-6 bg-slate-50 rounded-[32px] border border-slate-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-black text-slate-800">{med.title}</h4>
+                        <span className={`text-sm font-black ${med.adherenceRate < 80 ? 'text-red-500' : 'text-emerald-600'}`}>
+                          {med.adherenceRate}%
+                        </span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${med.adherenceRate < 80 ? 'bg-red-400' : 'bg-emerald-500'}`}
+                          style={{ width: `${med.adherenceRate}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-slate-500 font-bold">{med.takenDays} / {med.scheduledDays} 日 服用</p>
+                      {med.missedDates.length > 0 && (
+                        <div className="flex items-start gap-2 pt-2 border-t border-slate-200 text-amber-600">
+                          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                          <p className="text-xs font-bold leading-relaxed">
+                            飲み忘れ: {med.missedDates.slice(0, 5).map(d => d.slice(5).replace('-', '/')).join('、')}
+                            {med.missedDates.length > 5 && ` 他${med.missedDates.length - 5}件`}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+        )}
 
         {config.includeCondition && (
           <section className="space-y-8">

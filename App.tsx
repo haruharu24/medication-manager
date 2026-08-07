@@ -12,12 +12,13 @@ import { MedicationListView } from './features/meds/MedicationListView';
 import { ReportSetupView } from './features/report/ReportSetupView';
 import { ReportPreviewView } from './features/report/ReportPreviewView';
 import { ReminderOverlay } from './components/ReminderOverlay';
-import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle } from 'lucide-react';
+import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload } from 'lucide-react';
 // Fix: Import GoogleGenAI and Type for AI-powered scanning
 import { GoogleGenAI, Type } from "@google/genai";
 import { markMedicationTaken } from './utils/medicationActions';
 import { drainPendingActions, PendingAction } from './utils/pendingActionsDb';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush } from './utils/push';
+import { buildBackup, downloadBackup, parseBackupFile } from './utils/backup';
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>('home');
@@ -182,6 +183,32 @@ const App: React.FC = () => {
     if (result.changed) {
       setLogs(result.logs);
       setMedications(result.medications);
+    }
+  };
+
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportBackup = () => {
+    const backup = buildBackup({ medications, logs, globalLogs, conditions, reminderSettings });
+    downloadBackup(backup);
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const backup = await parseBackupFile(file);
+      const exportedAtLabel = backup.exportedAt ? format(new Date(backup.exportedAt), 'yyyy/MM/dd HH:mm') : '不明';
+      if (!window.confirm(`バックアップ(${exportedAtLabel}時点)を読み込みます。現在のデータは上書きされます。よろしいですか？`)) return;
+      setMedications(backup.medications);
+      setLogs(backup.logs);
+      setGlobalLogs(backup.globalLogs);
+      setConditions(backup.conditions);
+      setReminderSettings(backup.reminderSettings);
+      alert('データを復元しました');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'インポートに失敗しました');
     }
   };
 
@@ -364,6 +391,18 @@ const App: React.FC = () => {
                 </div>
                 <ChevronRight size={20} className="text-slate-300" />
               </button>
+              <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm divide-y divide-slate-50 overflow-hidden">
+                <button onClick={handleExportBackup} className="w-full p-6 flex items-center gap-4 active:bg-slate-50 transition-colors">
+                  <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0"><Download size={22}/></div>
+                  <div className="text-left"><p className="font-black text-slate-800">データをエクスポート</p><p className="text-xs text-slate-400 font-bold">全データをJSONファイルとして保存</p></div>
+                </button>
+                <button onClick={() => importInputRef.current?.click()} className="w-full p-6 flex items-center gap-4 active:bg-slate-50 transition-colors">
+                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0"><Upload size={22}/></div>
+                  <div className="text-left"><p className="font-black text-slate-800">データをインポート</p><p className="text-xs text-slate-400 font-bold">バックアップファイルから復元(上書き)</p></div>
+                </button>
+                <input ref={importInputRef} type="file" accept="application/json" onChange={handleImportFile} className="hidden" />
+              </div>
+
               <button onClick={() => { if(window.confirm('全データを削除しますか？')) { localStorage.clear(); location.reload(); }}} className="w-full p-4 bg-white rounded-3xl border border-red-50 text-red-500 font-bold flex items-center gap-3 active:scale-95 transition-transform">
                 <RotateCcw size={20} /> データリセット
               </button>
