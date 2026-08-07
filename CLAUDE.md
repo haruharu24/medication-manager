@@ -34,6 +34,14 @@ npm run test:all      # test + test:e2e をまとめて実行
 - 新しいアイコンのみボタンやトグルには `aria-label`(または `aria-labelledby`)を必ず付ける。新しいモーダルには `role="dialog"` `aria-modal="true"` と見出しへの `aria-labelledby`(または `aria-label`)を付ける。
 - 新しい文字色を追加する場合、白背景に対して最低 4.5:1 のコントラスト比を確保すること(`text-slate-400`/`text-gray-400` は白背景でこの基準を満たさない — 使うなら `text-slate-500` 以上/`text-gray-500` 以上にする)。
 
+## 多言語対応(i18n)
+
+- `i18n/translations.ts` に `ja`/`en` の辞書、`i18n/index.tsx` に `I18nProvider`/`useI18n()` がある。`en` は `typeof ja` で型付けされているので、`ja` にキーを追加すると `en` 側の対応漏れは型エラーになる。
+- 画面に文字列を追加するときは `const { t } = useI18n();` として `t.<namespace>.<key>` を参照する形にすること(直接日本語をJSXに書かない)。`useI18n()` はプロバイダーの外でも安全に使える(未ラップ時は日本語のデフォルト値を返すのでコンポーネント単体テストは今まで通り書ける)。
+- 言語の切り替えUIは設定画面(`App.tsx`)にあり、選択は `localStorage.language` に永続化される。
+- **現状のカバレッジ境界**: ナビゲーション(`BottomNav`)、設定画面、ホーム/お薬画面のヘッダー・追加メニュー・タブ、オンボーディング(`OnboardingOverlay`)は翻訳済み。お薬の追加・編集フォーム(`MedicationForm`)、AIスキャン確認画面(`ScanReviewModal`)、レポート画面、家族共有パネル(`AccountPanel`)、飲み合わせチェック、カメラモーダル、日付書式(date-fnsの `locale: ja`)は未対応で日本語のまま。これらを対応する際も同じ `useI18n()` パターンで拡張すること。
+- E2Eテストで言語切り替え後の画面を検証する際、Playwrightのデフォルトプロジェクト設定はオンボーディング表示を無効化する `storageState`(`e2e/fixtures/onboarding-completed.json`)を使っている点に注意。
+
 ## その他
 
 - `server/` はフロントエンドとは別プロセスで動く。ローカル開発の手順は README を参照。

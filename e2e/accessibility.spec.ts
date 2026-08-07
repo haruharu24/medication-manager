@@ -87,6 +87,15 @@ test.describe('accessibility @a11y', () => {
     expect(violations, formatViolations(violations)).toEqual([]);
   });
 
+  test('the settings screen has no detectable a11y violations in English', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: '設定', exact: true }).click();
+    await page.getByText('English').click();
+    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    const violations = await scan(page);
+    expect(violations, formatViolations(violations)).toEqual([]);
+  });
+
   test.describe('with onboarding not yet dismissed', () => {
     // Override the project default (onboarding pre-dismissed) to actually see the overlay.
     test.use({ storageState: { cookies: [], origins: [] } });

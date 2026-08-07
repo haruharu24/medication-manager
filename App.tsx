@@ -22,6 +22,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { markMedicationTaken } from './utils/medicationActions';
 import { drainPendingActions, PendingAction } from './utils/pendingActionsDb';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, PushReminder } from './utils/push';
+import { useI18n } from './i18n';
 import { buildBackup, downloadBackup, parseBackupFile } from './utils/backup';
 import { Theme, getStoredTheme, applyTheme } from './utils/theme';
 import { StoredAuth, getStoredAuth, clearStoredAuth, login as apiLogin, register as apiRegister } from './utils/auth';
@@ -39,6 +40,7 @@ import {
 } from './utils/household';
 
 const App: React.FC = () => {
+  const { t, language, setLanguage } = useI18n();
   const [view, setView] = useState<ViewMode>('home');
   const [medications, setMedications] = useState<Medication[]>([]);
   const [logs, setLogs] = useState<MedicationLog[]>([]);
@@ -555,8 +557,24 @@ const App: React.FC = () => {
         )}
         {view === 'settings' && (
           <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 animate-in fade-in duration-300">
-            <div className="bg-slate-50 dark:bg-slate-900 py-3 safe-top border-b border-slate-200 dark:border-slate-700"><h1 className="text-center font-bold text-slate-800 dark:text-slate-100">設定</h1></div>
+            <div className="bg-slate-50 dark:bg-slate-900 py-3 safe-top border-b border-slate-200 dark:border-slate-700"><h1 className="text-center font-bold text-slate-800 dark:text-slate-100">{t.settings.title}</h1></div>
             <div className="p-5 space-y-4">
+              <div className="bg-white dark:bg-slate-800 rounded-[32px] p-6 border border-slate-100 dark:border-slate-700 shadow-sm">
+                <p className="text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest mb-3">{t.settings.language}</p>
+                <div className="flex bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
+                  {(['ja', 'en'] as const).map(lang => (
+                    <button
+                      key={lang}
+                      type="button"
+                      onClick={() => setLanguage(lang)}
+                      className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${language === lang ? 'bg-white dark:bg-slate-800 shadow-sm text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-500'}`}
+                    >
+                      {lang === 'ja' ? '日本語' : 'English'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="bg-white dark:bg-slate-800 rounded-[32px] p-6 border border-slate-100 dark:border-slate-700 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -564,15 +582,15 @@ const App: React.FC = () => {
                       {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
                     </div>
                     <div>
-                      <p className="font-black text-slate-800 dark:text-slate-100">ダークモード</p>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold">画面の配色を切り替え</p>
+                      <p className="font-black text-slate-800 dark:text-slate-100">{t.settings.darkMode}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold">{t.settings.darkModeDesc}</p>
                     </div>
                   </div>
                   <button
                     onClick={toggleTheme}
                     role="switch"
                     aria-checked={theme === 'dark'}
-                    aria-label="ダークモード"
+                    aria-label={t.settings.darkMode}
                     className={`w-12 h-6 rounded-full transition-colors relative ${theme === 'dark' ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}
                   >
                     <div className={`absolute top-1 w-4 h-4 bg-white dark:bg-slate-800 rounded-full transition-all ${theme === 'dark' ? 'left-7' : 'left-1'}`} />
@@ -587,15 +605,15 @@ const App: React.FC = () => {
                       <Bell size={20} />
                     </div>
                     <div>
-                      <p className="font-black text-slate-800 dark:text-slate-100">強制リマインド</p>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold">指定時間以降の起動時に警告</p>
+                      <p className="font-black text-slate-800 dark:text-slate-100">{t.settings.forceRemind}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold">{t.settings.forceRemindDesc}</p>
                     </div>
                   </div>
                   <button
                     onClick={() => setReminderSettings(prev => ({ ...prev, enabled: !prev.enabled }))}
                     role="switch"
                     aria-checked={reminderSettings.enabled}
-                    aria-label="強制リマインド"
+                    aria-label={t.settings.forceRemind}
                     className={`w-12 h-6 rounded-full transition-colors relative ${reminderSettings.enabled ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}
                   >
                     <div className={`absolute top-1 w-4 h-4 bg-white dark:bg-slate-800 rounded-full transition-all ${reminderSettings.enabled ? 'left-7' : 'left-1'}`} />
@@ -605,7 +623,7 @@ const App: React.FC = () => {
                 {reminderSettings.enabled && (
                   <div className="flex items-center gap-3 pt-2 border-t border-slate-50 dark:border-slate-800">
                     <Clock size={16} className="text-slate-500 dark:text-slate-500" />
-                    <span className="text-sm font-bold text-slate-600 dark:text-slate-300">開始時間:</span>
+                    <span className="text-sm font-bold text-slate-600 dark:text-slate-300">{t.settings.startTime}</span>
                     <input
                       type="time"
                       value={reminderSettings.time}
@@ -617,7 +635,7 @@ const App: React.FC = () => {
 
                 {reminderSettings.enabled && (
                   <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold leading-relaxed pt-2 border-t border-slate-50 dark:border-slate-800">
-                    お薬ごとに「通知」時刻を設定すると、その時刻にも個別に通知が届きます。
+                    {t.settings.perMedHint}
                   </p>
                 )}
 
@@ -648,7 +666,7 @@ const App: React.FC = () => {
               <button onClick={() => setView('report-setup')} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center"><FileDown size={24}/></div>
-                  <div className="text-left"><p className="text-lg">レポート作成</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">PDF出力・印刷・共有</p></div>
+                  <div className="text-left"><p className="text-lg">{t.settings.reportCreate}</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">{t.settings.reportCreateDesc}</p></div>
                 </div>
                 <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
               </button>
@@ -656,7 +674,7 @@ const App: React.FC = () => {
               <button onClick={() => setShowOnboarding(true)} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-teal-50 dark:bg-teal-500/10 text-teal-600 rounded-2xl flex items-center justify-center"><HelpCircle size={24}/></div>
-                  <div className="text-left"><p className="text-lg">使い方を見る</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">アプリの基本的な使い方を確認</p></div>
+                  <div className="text-left"><p className="text-lg">{t.settings.howToUse}</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">{t.settings.howToUseDesc}</p></div>
                 </div>
                 <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
               </button>
@@ -669,9 +687,9 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-purple-50 dark:bg-purple-500/10 text-purple-600 rounded-2xl flex items-center justify-center"><ShieldAlert size={24}/></div>
                   <div className="text-left">
-                    <p className="text-lg">飲み合わせチェック(AI)</p>
+                    <p className="text-lg">{t.settings.interactionCheck}</p>
                     <p className="text-xs text-slate-500 dark:text-slate-500 font-bold">
-                      {medications.filter(m => !m.isFolder).length < 2 ? 'お薬を2件以上登録すると使えます' : 'AIが併用リスクを確認します'}
+                      {medications.filter(m => !m.isFolder).length < 2 ? t.settings.interactionCheckNeedsTwo : t.settings.interactionCheckReady}
                     </p>
                   </div>
                 </div>
@@ -680,17 +698,17 @@ const App: React.FC = () => {
               <div className="bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 shadow-sm divide-y divide-slate-50 dark:divide-slate-800 overflow-hidden">
                 <button onClick={handleExportBackup} className="w-full p-6 flex items-center gap-4 active:bg-slate-50 dark:active:bg-slate-700 transition-colors">
                   <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0"><Download size={22}/></div>
-                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">データをエクスポート</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">全データをJSONファイルとして保存</p></div>
+                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">{t.settings.exportData}</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">{t.settings.exportDataDesc}</p></div>
                 </button>
                 <button onClick={() => importInputRef.current?.click()} className="w-full p-6 flex items-center gap-4 active:bg-slate-50 dark:active:bg-slate-700 transition-colors">
                   <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center shrink-0"><Upload size={22}/></div>
-                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">データをインポート</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">バックアップファイルから復元(上書き)</p></div>
+                  <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100">{t.settings.importData}</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">{t.settings.importDataDesc}</p></div>
                 </button>
                 <input ref={importInputRef} type="file" accept="application/json" onChange={handleImportFile} className="hidden" />
               </div>
 
-              <button onClick={() => { if(window.confirm('全データを削除しますか？')) { localStorage.clear(); location.reload(); }}} className="w-full p-4 bg-white dark:bg-slate-800 rounded-3xl border border-red-50 dark:border-red-500/20 text-red-600 font-bold flex items-center gap-3 active:scale-95 transition-transform">
-                <RotateCcw size={20} /> データリセット
+              <button onClick={() => { if(window.confirm(t.settings.resetConfirm)) { localStorage.clear(); location.reload(); }}} className="w-full p-4 bg-white dark:bg-slate-800 rounded-3xl border border-red-50 dark:border-red-500/20 text-red-600 font-bold flex items-center gap-3 active:scale-95 transition-transform">
+                <RotateCcw size={20} /> {t.settings.resetData}
               </button>
             </div>
           </div>
