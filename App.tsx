@@ -5,6 +5,7 @@ import { BottomNav } from './components/BottomNav';
 import { MedicationForm } from './components/MedicationForm';
 import { CameraModal } from './components/CameraModal';
 import { QuickLogSheet } from './components/QuickLogSheet';
+import { InteractionCheckModal } from './components/InteractionCheckModal';
 import { Medication, MedicationLog, ViewMode, DailyCondition, GlobalActionLog, ReportConfig, ReminderSettings } from './types';
 import { UNITS, LABELS } from './constants';
 import { HomeView } from './features/home/HomeView';
@@ -12,7 +13,7 @@ import { MedicationListView } from './features/meds/MedicationListView';
 import { ReportSetupView } from './features/report/ReportSetupView';
 import { ReportPreviewView } from './features/report/ReportPreviewView';
 import { ReminderOverlay } from './components/ReminderOverlay';
-import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload } from 'lucide-react';
+import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload, ShieldAlert } from 'lucide-react';
 // Fix: Import GoogleGenAI and Type for AI-powered scanning
 import { GoogleGenAI, Type } from "@google/genai";
 import { markMedicationTaken } from './utils/medicationActions';
@@ -51,6 +52,7 @@ const App: React.FC = () => {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [pushStatus, setPushStatus] = useState<string | null>(null);
   const [showQuickLog, setShowQuickLog] = useState(false);
+  const [showInteractionCheck, setShowInteractionCheck] = useState(false);
 
   // Keeps the pending-action drain logic (which can fire from a service worker
   // "message" event at any time) reading fresh state instead of a stale closure.
@@ -234,7 +236,9 @@ const App: React.FC = () => {
   };
 
   // Fix: Added handleScan implementation using Gemini AI to extract medication data
-  const handleScan = async (base64: string) => {
+  // Accepts one or more photos (multi-page お薬手帳) and analyzes them together in a
+  // single request so duplicate entries across pages can be reconciled by the model.
+  const handleScan = async (base64Images: string[]) => {
     setIsCameraOpen(false);
     setIsScanning(true);
     try {
@@ -243,8 +247,8 @@ const App: React.FC = () => {
         model: 'gemini-3-flash-preview',
         contents: {
           parts: [
-            { inlineData: { data: base64, mimeType: 'image/jpeg' } },
-            { text: "お薬手帳の画像を解析して、記載されているお薬のリストを抽出し、指定されたJSON形式で返してください。日本語で回答してください。不明な項目はデフォルト値（錠、朝食後など）を使用してください。" }
+            ...base64Images.map(data => ({ inlineData: { data, mimeType: 'image/jpeg' } })),
+            { text: `お薬手帳の画像(${base64Images.length}枚)を解析して、記載されているお薬のリストを抽出し、指定されたJSON形式で返してください。複数枚にまたがる場合はすべてのページを合わせて1つのリストにまとめ、同じお薬が重複して写っている場合は1件にまとめてください。日本語で回答してください。不明な項目はデフォルト値（錠、朝食後など）を使用してください。` }
           ]
         },
         config: {
@@ -391,6 +395,23 @@ const App: React.FC = () => {
                 </div>
                 <ChevronRight size={20} className="text-slate-300" />
               </button>
+
+              <button
+                onClick={() => setShowInteractionCheck(true)}
+                disabled={medications.filter(m => !m.isFolder).length < 2}
+                className="w-full p-6 bg-white rounded-[32px] border border-slate-100 flex items-center justify-between font-black text-slate-800 shadow-sm active:scale-95 transition-all disabled:opacity-50"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center"><ShieldAlert size={24}/></div>
+                  <div className="text-left">
+                    <p className="text-lg">飲み合わせチェック(AI)</p>
+                    <p className="text-xs text-slate-400 font-bold">
+                      {medications.filter(m => !m.isFolder).length < 2 ? 'お薬を2件以上登録すると使えます' : 'AIが併用リスクを確認します'}
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight size={20} className="text-slate-300" />
+              </button>
               <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm divide-y divide-slate-50 overflow-hidden">
                 <button onClick={handleExportBackup} className="w-full p-6 flex items-center gap-4 active:bg-slate-50 transition-colors">
                   <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0"><Download size={22}/></div>
@@ -421,6 +442,10 @@ const App: React.FC = () => {
             setShowReminderOverlay(false);
           }}
         />
+      )}
+
+      {showInteractionCheck && (
+        <InteractionCheckModal medications={medications} onClose={() => setShowInteractionCheck(false)} />
       )}
 
       {showQuickLog && (
