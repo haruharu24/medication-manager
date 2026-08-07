@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { format, subDays } from 'date-fns';
 import { BottomNav } from './components/BottomNav';
 import { MedicationForm } from './components/MedicationForm';
@@ -20,7 +20,7 @@ import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle,
 import { GoogleGenAI, Type } from "@google/genai";
 import { markMedicationTaken } from './utils/medicationActions';
 import { drainPendingActions, PendingAction } from './utils/pendingActionsDb';
-import { registerServiceWorker, subscribeToPush, unsubscribeFromPush } from './utils/push';
+import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, PushReminder } from './utils/push';
 import { buildBackup, downloadBackup, parseBackupFile } from './utils/backup';
 import { Theme, getStoredTheme, applyTheme } from './utils/theme';
 import { StoredAuth, getStoredAuth, clearStoredAuth, login as apiLogin, register as apiRegister } from './utils/auth';
@@ -312,18 +312,33 @@ const App: React.FC = () => {
     }
   }, [settingsLoaded, drainAndApply]);
 
-  // Keep the backend's push subscription in sync with the reminder toggle/time.
+  // One daily catch-all reminder (the global 強制リマインド time) plus one reminder
+  // per medication that has its own notification time set.
+  const activeReminders = useMemo<PushReminder[]>(() => {
+    const medReminders: PushReminder[] = medications
+      .filter(m => !m.isFolder && m.notificationTime)
+      .map(m => ({ id: m.id, medicationId: m.id, title: m.title, time: m.notificationTime as string }));
+    return [
+      { id: 'ALL', medicationId: 'ALL', title: '服薬リマインダー', time: reminderSettings.time },
+      ...medReminders,
+    ];
+  }, [medications, reminderSettings.time]);
+  const remindersKey = useMemo(() => JSON.stringify(activeReminders), [activeReminders]);
+
+  // Keep the backend's push subscription in sync with the reminder toggle/time and
+  // with each medication's own notification time.
   useEffect(() => {
     if (!settingsLoaded) return;
     if (reminderSettings.enabled) {
-      subscribeToPush(reminderSettings.time).then(result => {
+      subscribeToPush(activeReminders).then(result => {
         setPushStatus(result.ok ? null : (result.reason || '通知の登録に失敗しました'));
       });
     } else {
       unsubscribeFromPush();
       setPushStatus(null);
     }
-  }, [reminderSettings.enabled, reminderSettings.time, settingsLoaded]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reminderSettings.enabled, remindersKey, settingsLoaded]);
 
   // "今すぐ服薬を記録" manifest shortcut (/?quickAction=log) opens straight into the
   // quick-record sheet for people who don't want to go through the calendar edit flow.
@@ -587,6 +602,12 @@ const App: React.FC = () => {
                       className="bg-slate-50 dark:bg-slate-900 border-none rounded-lg px-3 py-1 font-black text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none"
                     />
                   </div>
+                )}
+
+                {reminderSettings.enabled && (
+                  <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold leading-relaxed pt-2 border-t border-slate-50 dark:border-slate-800">
+                    お薬ごとに「通知」時刻を設定すると、その時刻にも個別に通知が届きます。
+                  </p>
                 )}
 
                 {reminderSettings.enabled && pushStatus && (

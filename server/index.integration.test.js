@@ -185,15 +185,18 @@ describe('push subscription endpoints', () => {
     expect(body.publicKey).toBe(process.env.VAPID_PUBLIC_KEY);
   });
 
-  it('accepts a subscription and a snooze request', async () => {
+  it('accepts a subscription with multiple reminders and a snooze request', async () => {
     const subRes = await postJson('/api/subscribe', {
       subscription: { endpoint: 'https://example.com/push/abc', keys: { p256dh: 'x', auth: 'y' } },
-      reminderTime: '08:00',
+      reminders: [
+        { id: 'ALL', medicationId: 'ALL', title: '服薬リマインダー', time: '08:00' },
+        { id: 'med-1', medicationId: 'med-1', title: 'テスト薬', time: '09:00' },
+      ],
       timezoneOffsetMinutes: -540,
     });
     expect(subRes.status).toBe(200);
 
-    const snoozeRes = await postJson('/api/snooze', { endpoint: 'https://example.com/push/abc', minutes: 15 });
+    const snoozeRes = await postJson('/api/snooze', { endpoint: 'https://example.com/push/abc', reminderId: 'med-1', minutes: 15 });
     expect(snoozeRes.status).toBe(200);
 
     const unsubRes = await postJson('/api/unsubscribe', { endpoint: 'https://example.com/push/abc' });
@@ -201,7 +204,20 @@ describe('push subscription endpoints', () => {
   });
 
   it('rejects a subscribe request missing required fields', async () => {
-    const res = await postJson('/api/subscribe', { reminderTime: '08:00' });
+    const res = await postJson('/api/subscribe', { reminders: [{ id: 'ALL', time: '08:00' }] });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a subscribe request with no valid reminders', async () => {
+    const res = await postJson('/api/subscribe', {
+      subscription: { endpoint: 'https://example.com/push/no-reminders', keys: { p256dh: 'x', auth: 'y' } },
+      reminders: [],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a snooze request missing reminderId', async () => {
+    const res = await postJson('/api/snooze', { endpoint: 'https://example.com/push/abc' });
     expect(res.status).toBe(400);
   });
 });

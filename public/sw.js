@@ -68,6 +68,7 @@ self.addEventListener('push', (event) => {
     data: {
       dateStr: payload.dateStr || new Date().toISOString().slice(0, 10),
       medicationId: payload.medicationId || 'ALL',
+      reminderId: payload.reminderId || payload.medicationId || 'ALL',
       endpoint: payload.endpoint || null,
       snoozeUrl: payload.snoozeUrl || null,
     },
@@ -115,7 +116,7 @@ self.addEventListener('notificationclick', (event) => {
         await fetch(data.snoozeUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint: data.endpoint, minutes: 15 }),
+          body: JSON.stringify({ endpoint: data.endpoint, reminderId: data.reminderId || 'ALL', minutes: 15 }),
         });
       } catch (e) {
         // Offline or server unreachable — nothing more we can do from here.

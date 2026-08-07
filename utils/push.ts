@@ -1,8 +1,18 @@
 // Client-side helpers for the Web Push based reminder: registers the service worker,
-// requests notification permission, and syncs the push subscription + reminder time
-// with the backend in server/ so it can send a daily push even while the app is closed.
+// requests notification permission, and syncs the push subscription + reminder times
+// with the backend in server/ so it can send pushes even while the app is closed.
+//
+// A single subscription can carry several reminders at once: the daily catch-all
+// (medicationId 'ALL') plus one per medication that has its own notification time.
 
 const PUSH_SERVER_URL = (import.meta as any).env?.VITE_PUSH_SERVER_URL || 'http://localhost:8787';
+
+export interface PushReminder {
+  id: string;
+  medicationId: string;
+  title: string;
+  time: string; // HH:mm
+}
 
 export interface PushSetupResult {
   ok: boolean;
@@ -33,7 +43,10 @@ export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration
   }
 };
 
-export const subscribeToPush = async (reminderTime: string): Promise<PushSetupResult> => {
+export const subscribeToPush = async (reminders: PushReminder[]): Promise<PushSetupResult> => {
+  if (reminders.length === 0) {
+    return { ok: false, reason: '通知するリマインダーがありません' };
+  }
   if (!isPushSupported()) {
     return { ok: false, reason: 'このブラウザは通知に対応していません' };
   }
@@ -66,7 +79,7 @@ export const subscribeToPush = async (reminderTime: string): Promise<PushSetupRe
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         subscription,
-        reminderTime,
+        reminders,
         timezoneOffsetMinutes: new Date().getTimezoneOffset(),
       }),
     });
