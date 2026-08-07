@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { format, eachDayOfInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameDay, isToday, addMonths, addWeeks, addDays, subMonths, subWeeks, subDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Plus, Camera, FileText, Check, Edit3, Save, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Plus, Camera, FileText, Check, Edit3, Save, ChevronLeft, ChevronRight, AlertTriangle, FolderPlus } from 'lucide-react';
 import { HealthCard } from '../../components/HealthCard';
 import { Medication, MedicationLog, DailyCondition, CalendarMode } from '../../types';
 import { WEEK_DAYS } from '../../constants';
@@ -20,9 +20,10 @@ interface HomeViewProps {
   onEditMed: (med: Medication) => void;
   onOpenForm: () => void;
   onOpenScan: () => void;
+  onOpenGroupForm: () => void;
 }
 
-export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, setMedications, conditions, setConditions, onEditMed, onOpenForm, onOpenScan }) => {
+export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, setMedications, conditions, setConditions, onEditMed, onOpenForm, onOpenScan, onOpenGroupForm }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [displayDate, setDisplayDate] = useState(new Date());
   // 初期表示を「月」表示に変更
@@ -137,7 +138,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, 
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900">
       {/* 最小化されたヘッダー */}
-      <div className="bg-slate-50 dark:bg-slate-900 py-1.5 safe-top border-b border-slate-200 dark:border-slate-700 relative shrink-0">
+      <div className="bg-slate-50 dark:bg-slate-900 py-1.5 safe-top border-b border-slate-200 dark:border-slate-700 relative z-20 shrink-0">
         <h1 className="text-center font-bold text-slate-800 dark:text-slate-100 text-[10px]">MediMate</h1>
         <div className="absolute right-4 top-1/2 -translate-y-1/2">
           <button onClick={() => setShowAddMenu(!showAddMenu)} className="bg-emerald-700 text-white px-3 py-1.5 rounded-full font-bold text-[10px] shadow-lg flex items-center gap-1 active:scale-95 transition-transform">
@@ -150,6 +151,9 @@ export const HomeView: React.FC<HomeViewProps> = ({ medications, logs, setLogs, 
               </button>
               <button onClick={() => { onOpenScan(); setShowAddMenu(false); }} className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-left text-sm font-bold text-slate-700 dark:text-slate-200">
                 <Camera size={18} className="text-blue-500" /> 手帳スキャン
+              </button>
+              <button onClick={() => { onOpenGroupForm(); setShowAddMenu(false); }} className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-left text-sm font-bold text-slate-700 dark:text-slate-200">
+                <FolderPlus size={18} className="text-amber-500" /> グループを作成
               </button>
             </div>
           )}

@@ -392,6 +392,23 @@ const App: React.FC = () => {
     setEditingMed(null);
   };
 
+  const handleOpenGroupForm = () => {
+    setEditingMed({
+      id: '',
+      title: '',
+      unit: '錠',
+      dosage: 0,
+      label: '',
+      stock: 0,
+      memo: '',
+      color: 'emerald',
+      startDate: Date.now(),
+      isFolder: true,
+      folderType: 'multi-dose',
+    });
+    setIsFormOpen(true);
+  };
+
   // Fix: Added handleScan implementation using Gemini AI to extract medication data
   // Accepts one or more photos (multi-page お薬手帳) and analyzes them together in a
   // single request so duplicate entries across pages can be reconciled by the model.
@@ -472,15 +489,17 @@ const App: React.FC = () => {
             onEditMed={(med) => { setEditingMed(med); setIsFormOpen(true); }}
             onOpenForm={() => { setEditingMed(null); setIsFormOpen(true); }}
             onOpenScan={() => setIsCameraOpen(true)}
+            onOpenGroupForm={handleOpenGroupForm}
           />
         )}
         {view === 'meds' && (
-          <MedicationListView 
-            medications={medications} 
+          <MedicationListView
+            medications={medications}
             globalLogs={globalLogs}
             onEditMed={(med) => { setEditingMed(med); setIsFormOpen(true); }}
             onOpenForm={() => { setEditingMed(null); setIsFormOpen(true); }}
             onOpenScan={() => setIsCameraOpen(true)}
+            onOpenGroupForm={handleOpenGroupForm}
           />
         )}
         {view === 'report-setup' && (
@@ -669,15 +688,17 @@ const App: React.FC = () => {
       )}
 
       {isFormOpen && (
-        <MedicationForm 
+        <MedicationForm
           initialData={editingMed || undefined}
+          isNew={!editingMed || !medications.some(m => m.id === editingMed.id)}
+          availableGroups={medications.filter(m => m.isFolder)}
           onSave={handleSaveMed}
           onCancel={() => { setIsFormOpen(false); setEditingMed(null); }}
-          onDelete={(id) => {
+          onDelete={editingMed && medications.some(m => m.id === editingMed.id) ? (id) => {
             setMedications(medications.filter(m => m.id !== id && m.parentId !== id));
             addGlobalLog('delete', editingMed?.title || '不明', '情報を削除しました');
             setIsFormOpen(false);
-          }}
+          } : undefined}
           visibleUnits={UNITS}
           visibleLabels={LABELS}
         />

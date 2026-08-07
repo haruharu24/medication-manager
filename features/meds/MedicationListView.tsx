@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Pill, History, Plus, Camera, FileText, Edit2, ChevronDown, Package, FolderOpen, AlertTriangle } from 'lucide-react';
+import { Pill, History, Plus, Camera, FileText, Edit2, ChevronDown, Package, FolderOpen, AlertTriangle, FolderPlus } from 'lucide-react';
 import { Medication, GlobalActionLog } from '../../types';
 import { getStockLevel } from '../../utils/stock';
 
@@ -25,14 +25,16 @@ interface MedicationListViewProps {
   onEditMed: (med: Medication) => void;
   onOpenForm: () => void;
   onOpenScan: () => void;
+  onOpenGroupForm: () => void;
 }
 
-export const MedicationListView: React.FC<MedicationListViewProps> = ({ 
-  medications, 
-  globalLogs, 
-  onEditMed, 
-  onOpenForm, 
-  onOpenScan 
+export const MedicationListView: React.FC<MedicationListViewProps> = ({
+  medications,
+  globalLogs,
+  onEditMed,
+  onOpenForm,
+  onOpenScan,
+  onOpenGroupForm
 }) => {
   const [tab, setTab] = useState<'list' | 'history'>('list');
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -82,6 +84,9 @@ export const MedicationListView: React.FC<MedicationListViewProps> = ({
               </button>
               <button onClick={() => { onOpenScan(); setShowAddMenu(false); }} className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-left text-sm font-bold text-slate-700 dark:text-slate-200">
                 <Camera size={18} className="text-blue-500" /> 手帳スキャン
+              </button>
+              <button onClick={() => { onOpenGroupForm(); setShowAddMenu(false); }} className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-left text-sm font-bold text-slate-700 dark:text-slate-200">
+                <FolderPlus size={18} className="text-amber-500" /> グループを作成
               </button>
             </div>
           )}

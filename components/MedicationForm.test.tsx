@@ -88,4 +88,78 @@ describe('MedicationForm', () => {
     await user.click(screen.getByText('削除する'));
     expect(onDelete).toHaveBeenCalledWith('m1');
   });
+
+  it('creates a new folder with the selected folder type', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    render(
+      <MedicationForm
+        initialData={{
+          id: '',
+          title: '',
+          unit: '錠',
+          dosage: 0,
+          label: '',
+          stock: 0,
+          memo: '',
+          color: 'emerald',
+          startDate: Date.now(),
+          isFolder: true,
+          folderType: 'multi-dose',
+        }}
+        isNew
+        onSave={onSave}
+        onCancel={vi.fn()}
+        visibleUnits={UNITS}
+        visibleLabels={LABELS}
+      />
+    );
+
+    expect(screen.getByText('グループを作成')).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText('名称を入力...'), '朝の一包化');
+    await user.click(screen.getByText('一包化'));
+    await user.click(screen.getByText('変更を保存'));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.title).toBe('朝の一包化');
+    expect(saved.isFolder).toBe(true);
+    expect(saved.folderType).toBe('one-pack');
+  });
+
+  it('assigns a medication to an existing group via the group selector', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    const group = {
+      id: 'g1',
+      title: '朝の一包化',
+      unit: '包' as const,
+      dosage: 1,
+      label: '',
+      stock: 0,
+      memo: '',
+      color: 'emerald',
+      startDate: Date.now(),
+      isFolder: true,
+      folderType: 'one-pack' as const,
+    };
+    render(
+      <MedicationForm
+        onSave={onSave}
+        onCancel={vi.fn()}
+        visibleUnits={UNITS}
+        visibleLabels={LABELS}
+        availableGroups={[group]}
+        isNew
+      />
+    );
+
+    await user.type(screen.getByPlaceholderText('名称を入力...'), 'テスト薬');
+    await user.selectOptions(screen.getByLabelText('グループ'), 'g1');
+    await user.click(screen.getByText('変更を保存'));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.parentId).toBe('g1');
+  });
 });

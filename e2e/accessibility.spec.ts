@@ -53,4 +53,12 @@ test.describe('accessibility @a11y', () => {
     const violations = await scan(page);
     expect(violations, formatViolations(violations)).toEqual([]);
   });
+
+  test('the group creation form has no detectable a11y violations', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: '追加' }).click();
+    await page.getByText('グループを作成').click();
+    const violations = await scan(page);
+    expect(violations, formatViolations(violations)).toEqual([]);
+  });
 });
