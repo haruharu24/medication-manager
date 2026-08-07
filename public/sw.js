@@ -1,21 +1,76 @@
 /*
- * Service worker for MediMate: shows push reminders and lets the user record a dose
- * with one tap directly from the notification, without opening the app.
+ * Service worker for MediMate: shows push reminders, lets the user record a dose
+ * with one tap directly from the notification, and caches the app shell so the
+ * app still opens (with whatever was last synced to localStorage) when offline.
  *
  * Plain JS (this file is served as-is from public/, not bundled) — keep DB_NAME /
  * DB_VERSION / STORE_NAME in sync with utils/pendingActionsDb.ts.
+ *
+ * Bump SHELL_CACHE's version suffix whenever this file's caching behavior
+ * changes, so the activate handler evicts the previous version's cache.
  */
 
 const DB_NAME = 'medimate-db';
 const DB_VERSION = 1;
 const STORE_NAME = 'pendingActions';
 
-self.addEventListener('install', () => {
+const SHELL_CACHE = 'medimate-shell-v1';
+// The app's build output is content-hashed by Vite, so its JS/CSS filenames
+// aren't known ahead of time — those get cached opportunistically by the fetch
+// handler below as they're requested, instead of being pre-listed here.
+const SHELL_PRECACHE_URLS = ['/', '/manifest.json', '/icon.svg'];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(SHELL_CACHE)
+      .then((cache) => cache.addAll(SHELL_PRECACHE_URLS))
+      .catch(() => {})
+  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    (async () => {
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.filter((name) => name !== SHELL_CACHE).map((name) => caches.delete(name)));
+      await self.clients.claim();
+    })()
+  );
+});
+
+// Cache-first for the app shell (HTML/JS/CSS/icons), falling back to network
+// and opportunistically caching what it returns. Navigations fall back to the
+// cached shell page when the network is unreachable, so the app still opens
+// offline. Cross-origin requests (the push server's API calls) are left alone.
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request).catch(() => caches.match('/').then((cached) => cached || caches.match(request)))
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      const networkFetch = fetch(request)
+        .then((response) => {
+          if (response && response.ok) {
+            const responseClone = response.clone();
+            caches.open(SHELL_CACHE).then((cache) => cache.put(request, responseClone));
+          }
+          return response;
+        })
+        .catch(() => cached);
+      return cached || networkFetch;
+    })
+  );
 });
 
 function openDb() {
