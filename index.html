@@ -2,33 +2,19 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MediMate</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-      /* Hide scrollbar for Chrome, Safari and Opera */
-      .no-scrollbar::-webkit-scrollbar {
-        display: none;
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon.svg">
+    <meta name="theme-color" content="#059669">
+    <script>
+      // Applied before first paint to avoid a light-mode flash when the user has
+      // chosen dark mode. Kept in sync with App.tsx's theme toggle (localStorage 'theme').
+      if (localStorage.getItem('theme') === 'dark') {
+        document.documentElement.classList.add('dark');
       }
-      /* Hide scrollbar for IE, Edge and Firefox */
-      .no-scrollbar {
-        -ms-overflow-style: none;  /* IE and Edge */
-        scrollbar-width: none;  /* Firefox */
-      }
-      body {
-        background-color: #e2e8f0; /* slate-200 */
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      }
-      .safe-top {
-        padding-top: max(12px, env(safe-area-inset-top));
-      }
-      .safe-bottom {
-        padding-bottom: max(12px, env(safe-area-inset-bottom));
-      }
-      .pb-safe {
-        padding-bottom: env(safe-area-inset-bottom);
-      }
-    </style>
+    </script>
   <script type="importmap">
 {
   "imports": {
@@ -42,7 +28,6 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
   <body>
     <div id="root"></div>
