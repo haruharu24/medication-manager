@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogIn, UserPlus, LogOut, Users, Copy, Check, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { LogIn, UserPlus, LogOut, Users, Copy, Check, Loader2, RefreshCw, AlertTriangle, Eye } from 'lucide-react';
 import { StoredAuth } from '../utils/auth';
 import { Household, HouseholdMember } from '../utils/household';
 
@@ -19,6 +19,7 @@ interface AccountPanelProps {
   onJoinHousehold: (code: string) => Promise<void>;
   onSelectHousehold: (id: string) => void;
   onLeaveHousehold: () => Promise<void>;
+  onUpdateMemberRole: (userId: string, role: 'editor' | 'viewer') => Promise<void>;
 }
 
 const SYNC_LABEL: Record<SyncStatus, string> = {
@@ -42,6 +43,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
   onJoinHousehold,
   onSelectHousehold,
   onLeaveHousehold,
+  onUpdateMemberRole,
 }) => {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
@@ -167,15 +169,51 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
             </button>
           </div>
 
+          {members.find(m => m.userId === auth.user.id)?.role === 'viewer' && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-500/10 text-amber-600 rounded-xl">
+              <Eye size={14} className="shrink-0" />
+              <p className="text-[10px] font-bold leading-tight">閲覧のみのメンバーです。お薬の追加・編集はできません。</p>
+            </div>
+          )}
+
           <div className="space-y-1.5">
-            {members.map(m => (
-              <div key={m.userId} className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900 rounded-xl">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{m.email}</span>
-                {m.userId === activeHousehold.ownerId && (
-                  <span className="text-[9px] font-black text-blue-500 uppercase">オーナー</span>
-                )}
-              </div>
-            ))}
+            {members.map(m => {
+              const isOwner = m.userId === activeHousehold.ownerId;
+              const canManage = auth.user.id === activeHousehold.ownerId && !isOwner;
+              return (
+                <div key={m.userId} className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900 rounded-xl">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{m.email}</span>
+                  {isOwner ? (
+                    <span className="text-[9px] font-black text-blue-500 uppercase">オーナー</span>
+                  ) : canManage ? (
+                    <div className="flex bg-white dark:bg-slate-800 rounded-full p-0.5 border border-slate-100 dark:border-slate-700">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => withBusy(() => onUpdateMemberRole(m.userId, 'editor'))}
+                        aria-pressed={m.role === 'editor'}
+                        className={`px-2.5 py-1 rounded-full text-[9px] font-black transition-colors ${m.role === 'editor' ? 'bg-emerald-600 text-white' : 'text-slate-600 dark:text-slate-500'}`}
+                      >
+                        編集者
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => withBusy(() => onUpdateMemberRole(m.userId, 'viewer'))}
+                        aria-pressed={m.role === 'viewer'}
+                        className={`px-2.5 py-1 rounded-full text-[9px] font-black transition-colors ${m.role === 'viewer' ? 'bg-amber-500 text-white' : 'text-slate-600 dark:text-slate-500'}`}
+                      >
+                        閲覧のみ
+                      </button>
+                    </div>
+                  ) : (
+                    <span className={`text-[9px] font-black uppercase ${m.role === 'viewer' ? 'text-amber-500' : 'text-slate-600 dark:text-slate-500'}`}>
+                      {m.role === 'viewer' ? '閲覧のみ' : '編集者'}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {error && <p className="text-xs font-bold text-red-600">{error}</p>}

@@ -26,6 +26,8 @@ import {
   getHouseholdMembers,
   getHouseholdData,
   setHouseholdData,
+  getMemberRole,
+  setMemberRole,
 } from './accountStore.js';
 
 const PORT = process.env.PORT || 8787;
@@ -151,8 +153,40 @@ const requireMembership = (req, res, next) => {
   next();
 };
 
+// 'viewer' members can read shared data but not write it — used on the data PUT
+// and on the role-management endpoint (only the owner may change roles).
+const requireEditor = (req, res, next) => {
+  const role = getMemberRole(req.params.id, req.user.id);
+  if (role === 'viewer') return res.status(403).json({ error: '閲覧のみのメンバーは変更できません' });
+  next();
+};
+
+const requireOwner = (req, res, next) => {
+  const household = getHouseholdById(req.params.id);
+  if (household?.ownerId !== req.user.id) return res.status(403).json({ error: 'オーナーのみ操作できます' });
+  next();
+};
+
 app.get('/api/households/:id/members', requireAuth, requireMembership, (req, res) => {
   res.json({ members: getHouseholdMembers(req.params.id) });
+});
+
+app.post('/api/households/:id/members/:userId/role', requireAuth, requireMembership, requireOwner, (req, res) => {
+  const { role } = req.body || {};
+  try {
+    setMemberRole({ householdId: req.params.id, userId: req.params.userId, role });
+    const members = getHouseholdMembers(req.params.id);
+    // Role changes (unlike ordinary data edits) should take effect immediately for
+    // the affected member — e.g. a demotion to viewer should disable their write
+    // access right away, not just on their next reload.
+    broadcastToHousehold(req.params.id, { type: 'members-updated' });
+    res.json({ members });
+  } catch (e) {
+    if (e.message === 'INVALID_ROLE') return res.status(400).json({ error: 'roleは editor か viewer を指定してください' });
+    if (e.message === 'NOT_A_MEMBER') return res.status(404).json({ error: 'そのメンバーは見つかりません' });
+    if (e.message === 'CANNOT_CHANGE_OWNER_ROLE') return res.status(400).json({ error: 'オーナーの権限は変更できません' });
+    res.status(500).json({ error: '権限の変更に失敗しました' });
+  }
 });
 
 app.post('/api/households/:id/leave', requireAuth, requireMembership, (req, res) => {
@@ -164,7 +198,7 @@ app.get('/api/households/:id/data', requireAuth, requireMembership, (req, res) =
   res.json(getHouseholdData(req.params.id) || { data: null, updatedAt: null });
 });
 
-app.put('/api/households/:id/data', requireAuth, requireMembership, (req, res) => {
+app.put('/api/households/:id/data', requireAuth, requireMembership, requireEditor, (req, res) => {
   const { data } = req.body || {};
   if (!data) return res.status(400).json({ error: 'data is required' });
   const entry = setHouseholdData(req.params.id, data);

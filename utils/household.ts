@@ -8,9 +8,12 @@ export interface Household {
   ownerId: string;
 }
 
+export type HouseholdRole = 'owner' | 'editor' | 'viewer';
+
 export interface HouseholdMember {
   userId: string;
   email: string;
+  role: HouseholdRole;
   joinedAt: string;
 }
 
@@ -39,16 +42,33 @@ export const leaveHousehold = (token: string, householdId: string) =>
 export const fetchMembers = (token: string, householdId: string) =>
   apiRequest<{ members: HouseholdMember[] }>(`/api/households/${householdId}/members`, { token });
 
+export const updateMemberRole = (token: string, householdId: string, userId: string, role: 'editor' | 'viewer') =>
+  apiRequest<{ members: HouseholdMember[] }>(`/api/households/${householdId}/members/${userId}/role`, {
+    method: 'POST',
+    token,
+    body: { role },
+  });
+
 export const fetchHouseholdData = (token: string, householdId: string) =>
   apiRequest<{ data: SyncedData | null; updatedAt: string | null }>(`/api/households/${householdId}/data`, { token });
 
 export const pushHouseholdData = (token: string, householdId: string, data: SyncedData) =>
   apiRequest<{ updatedAt: string }>(`/api/households/${householdId}/data`, { method: 'PUT', token, body: { data } });
 
+export interface HouseholdSocketHandlers {
+  // Someone PUT new shared data (medications/logs/etc).
+  onDataUpdated: () => void;
+  // The owner changed a member's role. Broadcast separately from data updates so a
+  // demotion to viewer (or promotion back) takes effect immediately for the
+  // affected member, rather than waiting for their next reload.
+  onMembersUpdated: () => void;
+}
+
 // Keeps other devices in the same household in sync in near-real-time: the server
-// pings every connected member's socket whenever anyone PUTs new data, and we just
-// refetch on that signal rather than trying to diff/merge on the wire.
-export const connectHouseholdSocket = (token: string, householdId: string, onUpdate: () => void): (() => void) => {
+// pings every connected member's socket whenever anyone PUTs new data or a role
+// changes, and we just refetch on that signal rather than trying to diff/merge on
+// the wire.
+export const connectHouseholdSocket = (token: string, householdId: string, handlers: HouseholdSocketHandlers): (() => void) => {
   let closed = false;
   let ws: WebSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -60,7 +80,8 @@ export const connectHouseholdSocket = (token: string, householdId: string, onUpd
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'data-updated') onUpdate();
+        if (msg.type === 'data-updated') handlers.onDataUpdated();
+        else if (msg.type === 'members-updated') handlers.onMembersUpdated();
       } catch {
         // ignore malformed messages
       }

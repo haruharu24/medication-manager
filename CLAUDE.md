@@ -42,6 +42,13 @@ npm run test:all      # test + test:e2e をまとめて実行
 - **現状のカバレッジ境界**: ナビゲーション(`BottomNav`)、設定画面、ホーム/お薬画面のヘッダー・追加メニュー・タブ、オンボーディング(`OnboardingOverlay`)は翻訳済み。お薬の追加・編集フォーム(`MedicationForm`)、AIスキャン確認画面(`ScanReviewModal`)、レポート画面、家族共有パネル(`AccountPanel`)、飲み合わせチェック、カメラモーダル、日付書式(date-fnsの `locale: ja`)は未対応で日本語のまま。これらを対応する際も同じ `useI18n()` パターンで拡張すること。
 - E2Eテストで言語切り替え後の画面を検証する際、Playwrightのデフォルトプロジェクト設定はオンボーディング表示を無効化する `storageState`(`e2e/fixtures/onboarding-completed.json`)を使っている点に注意。
 
+## 世帯メンバーの権限(owner/editor/viewer)
+
+- `server/accountStore.js` の `householdMembers` に `role` フィールドがある(`owner`/`editor`/`viewer`)。作成者は `owner` 固定(変更不可)、招待コードで参加したメンバーは `editor` がデフォルト。オーナーだけが `POST /api/households/:id/members/:userId/role` でメンバーを `editor`/`viewer` に変更できる。
+- `viewer` は `GET /api/households/:id/data` は可能だが `PUT` は403(`requireEditor` ミドルウェア)。クライアント側(`App.tsx` の `isViewer`)も同期プッシュのeffectをスキップし、`HomeView`/`MedicationListView` の「追加」メニューを非表示にする(いずれもUXの補助であり、実際の書き込み拒否はサーバー側が担保する)。
+- 権限変更は他の同期イベントと同じWebSocket経路で `members-updated` としてブロードキャストされ、影響を受けたメンバーのクライアントは即座にメンバー一覧を再取得する(`utils/household.ts` の `connectHouseholdSocket`)。
+- **未対応の境界**: 服薬記録のカレンダートグルや体調スコアの変更は、viewerでもローカルには反映されてしまう(pushは行われないため、次の同期で上書きされる)。完全なロックダウンは今後の課題。
+
 ## オフラインキャッシュ(Service Worker)
 
 - `public/sw.js` はプレーンJS(バンドルされない)。`fetch` イベントで同一オリジンのGETリクエストをcache-first + バックグラウンド更新でキャッシュし、ナビゲーションはオフライン時にキャッシュ済みの `/` にフォールバックする。ビルド出力のファイル名はハッシュ化されるため固定リストでの事前キャッシュはせず、実際にリクエストされた時点でキャッシュする方式にしている。

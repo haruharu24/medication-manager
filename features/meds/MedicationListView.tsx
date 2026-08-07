@@ -27,6 +27,9 @@ interface MedicationListViewProps {
   onOpenForm: () => void;
   onOpenScan: () => void;
   onOpenGroupForm: () => void;
+  // True for a 'viewer'-role household member: hides the "追加" entry point
+  // since it leads to writes (add/scan/create group) they aren't allowed to make.
+  readOnly?: boolean;
 }
 
 export const MedicationListView: React.FC<MedicationListViewProps> = ({
@@ -35,7 +38,8 @@ export const MedicationListView: React.FC<MedicationListViewProps> = ({
   onEditMed,
   onOpenForm,
   onOpenScan,
-  onOpenGroupForm
+  onOpenGroupForm,
+  readOnly
 }) => {
   const { t } = useI18n();
   const [tab, setTab] = useState<'list' | 'history'>('list');
@@ -76,10 +80,12 @@ export const MedicationListView: React.FC<MedicationListViewProps> = ({
       <div className="bg-slate-50 dark:bg-slate-900 py-3 safe-top border-b border-slate-200 dark:border-slate-700 relative">
         <h1 className="text-center font-bold text-slate-800 dark:text-slate-100">{t.meds.title}</h1>
         <div className="absolute right-4 top-1/2 -translate-y-1/2">
+          {!readOnly && (
           <button onClick={() => setShowAddMenu(!showAddMenu)} className="bg-emerald-700 text-white px-4 py-2 rounded-full font-bold text-xs shadow-lg flex items-center gap-1">
             <Plus size={14} /> {t.home.add}
           </button>
-          {showAddMenu && (
+          )}
+          {showAddMenu && !readOnly && (
             <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 py-2 z-[100] animate-in fade-in slide-in-from-top-2">
               <button onClick={() => { onOpenForm(); setShowAddMenu(false); }} className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 text-left text-sm font-bold text-slate-700 dark:text-slate-200">
                 <FileText size={18} className="text-emerald-500" /> {t.home.manualEntry}

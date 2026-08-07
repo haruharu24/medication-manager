@@ -36,6 +36,7 @@ import {
   fetchMembers,
   fetchHouseholdData,
   pushHouseholdData,
+  updateMemberRole as apiUpdateMemberRole,
   connectHouseholdSocket,
 } from './utils/household';
 
@@ -89,6 +90,10 @@ const App: React.FC = () => {
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
+  // 'viewer' members can read the household's shared data but not write it (the
+  // server rejects the PUT too — this just avoids pointless failed requests and
+  // the confusing "edit that silently reverts" UX that would follow).
+  const isViewer = householdMembers.find(m => m.userId === auth?.user.id)?.role === 'viewer';
 
   const setActiveHouseholdId = (id: string | null) => {
     setActiveHouseholdIdState(id);
@@ -146,7 +151,7 @@ const App: React.FC = () => {
         if (cancelled) return;
         if (updatedAt && data) {
           applyRemoteData(data);
-        } else {
+        } else if (!isViewer) {
           await pushHouseholdData(auth.token, activeHouseholdId, { medications, logs, globalLogs, conditions });
         }
         if (!cancelled) { setSyncStatus('synced'); setSyncError(null); }
@@ -157,10 +162,15 @@ const App: React.FC = () => {
       }
     })();
 
-    const disconnect = connectHouseholdSocket(auth.token, activeHouseholdId, () => {
-      fetchHouseholdData(auth.token, activeHouseholdId)
-        .then(({ data, updatedAt }) => { if (updatedAt && data) applyRemoteData(data); })
-        .catch(() => {});
+    const disconnect = connectHouseholdSocket(auth.token, activeHouseholdId, {
+      onDataUpdated: () => {
+        fetchHouseholdData(auth.token, activeHouseholdId)
+          .then(({ data, updatedAt }) => { if (updatedAt && data) applyRemoteData(data); })
+          .catch(() => {});
+      },
+      onMembersUpdated: () => {
+        fetchMembers(auth.token, activeHouseholdId).then(res => setHouseholdMembers(res.members)).catch(() => {});
+      },
     });
 
     return () => { cancelled = true; disconnect(); };
@@ -169,7 +179,7 @@ const App: React.FC = () => {
 
   // Push local changes to the shared household data after a short quiet period.
   useEffect(() => {
-    if (!settingsLoaded || !auth || !activeHouseholdId || !initialSyncDoneRef.current) return;
+    if (!settingsLoaded || !auth || !activeHouseholdId || !initialSyncDoneRef.current || isViewer) return;
     if (suppressNextPushRef.current) { suppressNextPushRef.current = false; return; }
 
     const timer = setTimeout(() => {
@@ -180,7 +190,7 @@ const App: React.FC = () => {
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [medications, logs, globalLogs, conditions, settingsLoaded, auth, activeHouseholdId]);
+  }, [medications, logs, globalLogs, conditions, settingsLoaded, auth, activeHouseholdId, isViewer]);
 
   const handleLogin = async (email: string, password: string) => { setAuth(await apiLogin(email, password)); };
   const handleRegister = async (email: string, password: string) => { setAuth(await apiRegister(email, password)); };
@@ -210,6 +220,12 @@ const App: React.FC = () => {
     await refreshHouseholds(auth);
     setActiveHouseholdId(null);
     setSyncStatus('idle');
+  };
+
+  const handleUpdateMemberRole = async (userId: string, role: 'editor' | 'viewer') => {
+    if (!auth || !activeHouseholdId) return;
+    const { members } = await apiUpdateMemberRole(auth.token, activeHouseholdId, userId, role);
+    setHouseholdMembers(members);
   };
 
   // Keeps the pending-action drain logic (which can fire from a service worker
@@ -521,20 +537,22 @@ const App: React.FC = () => {
             setMedications={setMedications}
             conditions={conditions}
             setConditions={setConditions}
-            onEditMed={(med) => { setEditingMed(med); setIsFormOpen(true); }}
+            onEditMed={isViewer ? () => {} : (med) => { setEditingMed(med); setIsFormOpen(true); }}
             onOpenForm={() => { setEditingMed(null); setIsFormOpen(true); }}
             onOpenScan={() => setIsCameraOpen(true)}
             onOpenGroupForm={handleOpenGroupForm}
+            readOnly={isViewer}
           />
         )}
         {view === 'meds' && (
           <MedicationListView
             medications={medications}
             globalLogs={globalLogs}
-            onEditMed={(med) => { setEditingMed(med); setIsFormOpen(true); }}
+            onEditMed={isViewer ? () => {} : (med) => { setEditingMed(med); setIsFormOpen(true); }}
             onOpenForm={() => { setEditingMed(null); setIsFormOpen(true); }}
             onOpenScan={() => setIsCameraOpen(true)}
             onOpenGroupForm={handleOpenGroupForm}
+            readOnly={isViewer}
           />
         )}
         {view === 'report-setup' && (
@@ -661,6 +679,7 @@ const App: React.FC = () => {
                 onJoinHousehold={handleJoinHousehold}
                 onSelectHousehold={setActiveHouseholdId}
                 onLeaveHousehold={handleLeaveHousehold}
+                onUpdateMemberRole={handleUpdateMemberRole}
               />
 
               <button onClick={() => setView('report-setup')} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">

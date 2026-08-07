@@ -74,18 +74,21 @@ export const createHousehold = ({ name, ownerId }) => {
     createdAt: new Date().toISOString(),
   };
   db.households.push(household);
-  db.householdMembers.push({ householdId: household.id, userId: ownerId, joinedAt: new Date().toISOString() });
+  db.householdMembers.push({ householdId: household.id, userId: ownerId, role: 'owner', joinedAt: new Date().toISOString() });
   write(db);
   return household;
 };
 
+// New members default to 'editor' (full read/write, matching the app's original
+// behavior before per-member roles existed). The owner can downgrade a member to
+// 'viewer' (read-only) afterwards via setMemberRole.
 export const joinHouseholdByInviteCode = ({ inviteCode, userId }) => {
   const db = read();
   const household = db.households.find((h) => h.inviteCode === inviteCode.toUpperCase());
   if (!household) throw new Error('INVALID_INVITE_CODE');
   const alreadyMember = db.householdMembers.some((m) => m.householdId === household.id && m.userId === userId);
   if (!alreadyMember) {
-    db.householdMembers.push({ householdId: household.id, userId, joinedAt: new Date().toISOString() });
+    db.householdMembers.push({ householdId: household.id, userId, role: 'editor', joinedAt: new Date().toISOString() });
     write(db);
   }
   return household;
@@ -105,8 +108,27 @@ export const getHouseholdMembers = (householdId) => {
     .filter((m) => m.householdId === householdId)
     .map((m) => {
       const user = db.users.find((u) => u.id === m.userId);
-      return { userId: m.userId, email: user?.email || '(unknown)', joinedAt: m.joinedAt };
+      return { userId: m.userId, email: user?.email || '(unknown)', role: m.role || 'editor', joinedAt: m.joinedAt };
     });
+};
+
+export const getMemberRole = (householdId, userId) => {
+  const db = read();
+  const member = db.householdMembers.find((m) => m.householdId === householdId && m.userId === userId);
+  return member ? (member.role || 'editor') : null;
+};
+
+// Only 'editor'/'viewer' are assignable — the owner's role is fixed at creation
+// and can't be reassigned (a household always needs exactly one owner).
+export const setMemberRole = ({ householdId, userId, role }) => {
+  if (role !== 'editor' && role !== 'viewer') throw new Error('INVALID_ROLE');
+  const db = read();
+  const member = db.householdMembers.find((m) => m.householdId === householdId && m.userId === userId);
+  if (!member) throw new Error('NOT_A_MEMBER');
+  if (member.role === 'owner') throw new Error('CANNOT_CHANGE_OWNER_ROLE');
+  member.role = role;
+  write(db);
+  return member;
 };
 
 // --- synced app data ---
