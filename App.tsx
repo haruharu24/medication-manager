@@ -591,7 +591,7 @@ const App: React.FC = () => {
         {view === 'settings' && (
           <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 animate-in fade-in duration-300">
             <div className="bg-slate-50 dark:bg-slate-900 py-3 safe-top border-b border-slate-200 dark:border-slate-700"><h1 className="text-center font-bold text-slate-800 dark:text-slate-100">{t.settings.title}</h1></div>
-            <div className="p-5 space-y-4">
+            <div className="p-5 pb-32 space-y-4">
               <div className="bg-white dark:bg-slate-800 rounded-[32px] p-6 border border-slate-100 dark:border-slate-700 shadow-sm">
                 <p className="text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest mb-3">{t.settings.language}</p>
                 <div className="flex bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
