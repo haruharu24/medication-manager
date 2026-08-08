@@ -54,6 +54,15 @@ npm run test:all      # test + test:e2e をまとめて実行
 - `public/sw.js` はプレーンJS(バンドルされない)。`fetch` イベントで同一オリジンのGETリクエストをcache-first + バックグラウンド更新でキャッシュし、ナビゲーションはオフライン時にキャッシュ済みの `/` にフォールバックする。ビルド出力のファイル名はハッシュ化されるため固定リストでの事前キャッシュはせず、実際にリクエストされた時点でキャッシュする方式にしている。
 - `sw.js` のキャッシュ戦略を変更したら `SHELL_CACHE` の末尾のバージョン番号(`medimate-shell-v1` など)を上げること。`activate` イベントで旧バージョンのキャッシュを破棄する仕組みになっている。
 
+## データ永続化(IndexedDB)
+
+- お薬・服薬記録・体調記録・履歴・リマインダー設定(`medications`/`logs`/`conditions`/`globalLogs`/`reminderSettings`)は `idb` パッケージ経由のIndexedDB(DB名 `medication-manager`, `db/database.ts` で定義)に永続化する。ストアごとのCRUDは `db/medications.ts` / `db/logs.ts` / `db/conditions.ts` / `db/globalLogs.ts` / `db/settings.ts` に分かれている。
+- `App.tsx` はこれらをReact stateとして持ち、現在の配列を丸ごとストアに書き戻す方式(`db/bulk.ts` の `replaceAllMedications` 等でclear+bulk put)を使っている。個々のadd/update/deleteのたびに1件ずつCRUD関数を呼ぶのではなく、既存の15機能(家族共有・グループ作成・AIスキャン確認・通知など)がすべて `setMedications` 等のReact state経由でしか状態を触らない前提を崩さないための設計。新しい機能を追加する際もこのパターンを踏襲し、state更新はReactの `setXxx` を使い、IndexedDBへの書き込みは既存のpersist effect(`App.tsx`)に任せること。
+- 初回起動時のみ `db/migration.ts` の `migrateFromLocalStorage()` が旧`localStorage`のデータをIndexedDBへ一度だけ移行する(`idb-migration-done` フラグで再実行を防止、元のlocalStorageキーは削除しない)。
+- IndexedDBが利用できない環境(Safariプライベートブラウズ等)へのフォールバックは意図的に実装していない。失敗時は`console.error`のみで、以降のUI操作は通常通り動作するが永続化されない。
+- テストは `db/__tests__/*.test.ts`(`fake-indexeddb` を使い、`testUtils.ts` の `setupFreshDB()` で各テスト前にDBをリセットする)。E2Eでの実永続化の検証は `e2e/persistence.spec.ts`(リロード後もデータが残ること、データリセットで全ストアがクリアされることを確認)。
+- `activeHouseholdId` / `onboardingCompleted` / `theme` / `language` / アカウント認証情報は今回のIndexedDB化の対象外で、引き続き `localStorage` に保存される。
+
 ## その他
 
 - `server/` はフロントエンドとは別プロセスで動く。ローカル開発の手順は README を参照。

@@ -52,6 +52,7 @@ const ja = {
     importDataDesc: 'バックアップファイルから復元(上書き)',
     resetData: 'データリセット',
     resetConfirm: '全データを削除しますか？',
+    resetFailed: 'データの削除に失敗しました。もう一度お試しください。',
   },
   onboarding: {
     skip: 'スキップ',
@@ -113,6 +114,7 @@ const en: typeof ja = {
     importDataDesc: 'Restore from a backup file (overwrites)',
     resetData: 'Reset all data',
     resetConfirm: 'Delete all data?',
+    resetFailed: 'Failed to delete data. Please try again.',
   },
   onboarding: {
     skip: 'Skip',

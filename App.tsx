@@ -20,6 +20,13 @@ import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle,
 // Fix: Import GoogleGenAI and Type for AI-powered scanning
 import { GoogleGenAI, Type } from "@google/genai";
 import { markMedicationTaken } from './utils/medicationActions';
+import { migrateFromLocalStorage } from './db/migration';
+import { getAllMedications } from './db/medications';
+import { getAllLogs } from './db/logs';
+import { getAllConditions } from './db/conditions';
+import { getAllGlobalLogs } from './db/globalLogs';
+import { getReminderSettings, saveReminderSettings } from './db/settings';
+import { replaceAllMedications, replaceAllLogs, replaceAllConditions, replaceAllGlobalLogs, resetAllData } from './db/bulk';
 import { drainPendingActions, PendingAction } from './utils/pendingActionsDb';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, PushReminder } from './utils/push';
 import { useI18n } from './i18n';
@@ -234,35 +241,41 @@ const App: React.FC = () => {
   useEffect(() => { stateRef.current = { logs, medications }; }, [logs, medications]);
 
   useEffect(() => {
-    try {
-      const load = (key: string) => JSON.parse(localStorage.getItem(key) || '[]');
-      setMedications(load('medications'));
-      setLogs(load('logs'));
-      setGlobalLogs(load('globalLogs'));
-      setConditions(load('conditions'));
-
-      const savedReminder = localStorage.getItem('reminderSettings');
-      if (savedReminder) {
-        const settings: ReminderSettings = JSON.parse(savedReminder);
+    let cancelled = false;
+    (async () => {
+      try {
+        await migrateFromLocalStorage();
+        const [meds, ls, gLogs, conds, settings] = await Promise.all([
+          getAllMedications(),
+          getAllLogs(),
+          getAllGlobalLogs(),
+          getAllConditions(),
+          getReminderSettings(),
+        ]);
+        if (cancelled) return;
+        setMedications(meds);
+        setLogs(ls);
+        setGlobalLogs(gLogs);
+        setConditions(conds);
         setReminderSettings(settings);
 
         // Check if we should show the reminder overlay
         const today = format(new Date(), 'yyyy-MM-dd');
         const now = format(new Date(), 'HH:mm');
-
         if (settings.enabled && settings.lastCheckedDate !== today && now >= settings.time) {
           setShowReminderOverlay(true);
         }
-      }
 
-      if (localStorage.getItem('onboardingCompleted') !== 'true') {
-        setShowOnboarding(true);
+        if (localStorage.getItem('onboardingCompleted') !== 'true') {
+          setShowOnboarding(true);
+        }
+      } catch (e) {
+        console.error("Failed to load data", e);
+      } finally {
+        if (!cancelled) setSettingsLoaded(true);
       }
-    } catch (e) {
-      console.error("Failed to load local storage", e);
-    } finally {
-      setSettingsLoaded(true);
-    }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const handleFinishOnboarding = () => {
@@ -272,15 +285,17 @@ const App: React.FC = () => {
 
   useEffect(() => {
     // Guard against writing back the pre-load default state (empty arrays) over
-    // real data still sitting in localStorage: this effect's dependencies are
+    // real data still sitting in IndexedDB: this effect's dependencies are
     // all "new" on the very first render too, so without this check it can fire
     // before the load effect above has applied what it read.
     if (!settingsLoaded) return;
-    localStorage.setItem('medications', JSON.stringify(medications));
-    localStorage.setItem('logs', JSON.stringify(logs));
-    localStorage.setItem('globalLogs', JSON.stringify(globalLogs));
-    localStorage.setItem('conditions', JSON.stringify(conditions));
-    localStorage.setItem('reminderSettings', JSON.stringify(reminderSettings));
+    Promise.all([
+      replaceAllMedications(medications),
+      replaceAllLogs(logs),
+      replaceAllGlobalLogs(globalLogs),
+      replaceAllConditions(conditions),
+      saveReminderSettings(reminderSettings),
+    ]).catch(e => console.error("Failed to persist data", e));
   }, [medications, logs, globalLogs, conditions, reminderSettings, settingsLoaded]);
 
   const addGlobalLog = (type: GlobalActionLog['type'], title: string, details?: string) => {
@@ -576,7 +591,7 @@ const App: React.FC = () => {
         {view === 'settings' && (
           <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 animate-in fade-in duration-300">
             <div className="bg-slate-50 dark:bg-slate-900 py-3 safe-top border-b border-slate-200 dark:border-slate-700"><h1 className="text-center font-bold text-slate-800 dark:text-slate-100">{t.settings.title}</h1></div>
-            <div className="p-5 space-y-4">
+            <div className="p-5 pb-32 space-y-4">
               <div className="bg-white dark:bg-slate-800 rounded-[32px] p-6 border border-slate-100 dark:border-slate-700 shadow-sm">
                 <p className="text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest mb-3">{t.settings.language}</p>
                 <div className="flex bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
@@ -726,7 +741,17 @@ const App: React.FC = () => {
                 <input ref={importInputRef} type="file" accept="application/json" onChange={handleImportFile} className="hidden" />
               </div>
 
-              <button onClick={() => { if(window.confirm(t.settings.resetConfirm)) { localStorage.clear(); location.reload(); }}} className="w-full p-4 bg-white dark:bg-slate-800 rounded-3xl border border-red-50 dark:border-red-500/20 text-red-600 font-bold flex items-center gap-3 active:scale-95 transition-transform">
+              <button onClick={async () => {
+                if (!window.confirm(t.settings.resetConfirm)) return;
+                try {
+                  await resetAllData();
+                  localStorage.clear();
+                  location.reload();
+                } catch (e) {
+                  console.error("Failed to reset data", e);
+                  alert(t.settings.resetFailed);
+                }
+              }} className="w-full p-4 bg-white dark:bg-slate-800 rounded-3xl border border-red-50 dark:border-red-500/20 text-red-600 font-bold flex items-center gap-3 active:scale-95 transition-transform">
                 <RotateCcw size={20} /> {t.settings.resetData}
               </button>
             </div>
