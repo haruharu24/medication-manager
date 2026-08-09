@@ -1,10 +1,12 @@
 
 import React from 'react';
-import { format, parse, isWithinInterval, eachDayOfInterval } from 'date-fns';
+import { format, parse, eachDayOfInterval } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { ChevronLeft, Share, Printer, Smile, Pill, History, TrendingUp, AlertTriangle } from 'lucide-react';
-import { ReportConfig, Medication, MedicationLog, DailyCondition, GlobalActionLog } from '../../types';
+import { ChevronLeft, Share, Printer, Smile, Pill, History, TrendingUp, AlertTriangle, Activity, Syringe, Phone } from 'lucide-react';
+import { ReportConfig, Medication, MedicationLog, DailyCondition, GlobalActionLog, VitalRecord, MedicalRecord, MedicalContacts } from '../../types';
 import { getAdherenceSummary } from '../../utils/adherence';
+import { TrendChart } from '../../components/TrendChart';
+import { VITAL_TYPES, VITAL_TYPE_LABELS, VITAL_TYPE_UNITS, groupVitalsByType, buildVitalSeries, formatVitalValue } from '../../utils/vitalsChart';
 
 interface ReportPreviewViewProps {
   config: ReportConfig;
@@ -12,68 +14,20 @@ interface ReportPreviewViewProps {
   logs: MedicationLog[];
   conditions: DailyCondition[];
   globalLogs: GlobalActionLog[];
+  vitals: VitalRecord[];
+  medicalRecords: MedicalRecord[];
+  medicalContacts: MedicalContacts;
   onBack: () => void;
 }
 
-const ScoreChart: React.FC<{ data: { date: string, score: number }[] }> = ({ data }) => {
-  const chartHeight = 150;
-  const chartWidth = 500;
-  const padding = 30;
-  const contentWidth = chartWidth - padding * 2;
-  const contentHeight = chartHeight - padding * 2;
-  
-  if (data.length < 2) return (
-    <div className="h-[150px] flex items-center justify-center bg-slate-50 dark:bg-slate-900 rounded-[32px] border border-dashed border-slate-200 dark:border-slate-700">
-      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-500 uppercase tracking-widest">推移を表示するには2日以上の記録が必要です</p>
-    </div>
-  );
-
-  const points = data.map((d, i) => {
-    const x = padding + (i / (data.length - 1)) * contentWidth;
-    const y = padding + contentHeight - (d.score / 10) * contentHeight;
-    return { x, y };
-  });
-
-  const pathD = `M ${points[0].x} ${points[0].y} ` + points.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
-
-  return (
-    <div className="bg-slate-50 dark:bg-slate-900 p-6 rounded-[32px] border border-slate-100 dark:border-slate-700 overflow-x-auto no-scrollbar">
-      <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto min-w-[400px]">
-        {/* Y-axis labels */}
-        {[0, 5, 10].map(val => {
-          const y = padding + contentHeight - (val / 10) * contentHeight;
-          return (
-            <g key={val}>
-              <line x1={padding} y1={y} x2={chartWidth - padding} y2={y} stroke="#e2e8f0" strokeDasharray="4" />
-              <text x={padding - 10} y={y + 4} fontSize="10" fontWeight="bold" fill="#94a3b8" textAnchor="end">{val}</text>
-            </g>
-          );
-        })}
-        
-        {/* The line */}
-        <path d={pathD} fill="none" stroke="#2563eb" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-        
-        {/* Dots */}
-        {points.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r="5" fill="white" stroke="#2563eb" strokeWidth="3" />
-        ))}
-
-        {/* X-axis labels (first, middle, last) */}
-        {[0, Math.floor(data.length / 2), data.length - 1].map(i => {
-          const d = data[i];
-          const x = points[i].x;
-          return (
-            <text key={i} x={x} y={chartHeight - 5} fontSize="9" fontWeight="black" fill="#94a3b8" textAnchor="middle">
-              {d.date.split('-').slice(1).join('/')}
-            </text>
-          );
-        })}
-      </svg>
-    </div>
-  );
+const GLOBAL_LOG_TYPE_LABEL: Record<GlobalActionLog['type'], string> = {
+  add: '追加',
+  update: '更新',
+  delete: '削除',
+  scan: 'スキャン',
 };
 
-export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, medications, logs, conditions, globalLogs, onBack }) => {
+export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, medications, logs, conditions, globalLogs, vitals, medicalRecords, medicalContacts, onBack }) => {
   const startDate = parse(config.start, 'yyyy-MM-dd', new Date());
   const endDate = parse(config.end, 'yyyy-MM-dd', new Date());
   const dateRange = eachDayOfInterval({ start: startDate, end: endDate });
@@ -89,6 +43,21 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
     : "0.0";
 
   const adherence = getAdherenceSummary(medications, logs, config.start, config.end);
+
+  // Time-series like vitals stay scoped to the report's date range; allergy/
+  // history and contacts are current-state snapshots, so they're shown in full
+  // regardless of the selected period.
+  const vitalsInRange = vitals.filter(v => v.dateStr >= config.start && v.dateStr <= config.end);
+  const vitalsByType = groupVitalsByType(vitalsInRange);
+  const allergies = medicalRecords.filter(r => r.type === 'allergy');
+  const medicalHistory = medicalRecords.filter(r => r.type === 'history');
+  const hasContacts = Object.values(medicalContacts).some(v => v && String(v).trim().length > 0);
+  const globalLogsInRange = globalLogs
+    .filter(l => {
+      const dStr = format(new Date(l.timestamp), 'yyyy-MM-dd');
+      return dStr >= config.start && dStr <= config.end;
+    })
+    .sort((a, b) => b.timestamp - a.timestamp);
 
   const handleShare = async () => {
     if (navigator.share) {
@@ -107,14 +76,14 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
       <div className="p-4 safe-top flex items-center justify-between border-b print:hidden sticky top-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl z-50">
         <button onClick={onBack} aria-label="戻る" className="p-2 text-slate-600 dark:text-slate-300"><ChevronLeft size={24}/></button>
         <div className="flex gap-2">
-          <button onClick={handleShare} className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full active:scale-90 transition-transform"><Share size={20}/></button>
+          <button onClick={handleShare} aria-label="共有" className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full active:scale-90 transition-transform"><Share size={20}/></button>
           <button onClick={() => window.print()} className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-2 rounded-full font-black text-sm flex items-center gap-2 shadow-lg"><Printer size={16}/> PDF出力 / 印刷</button>
         </div>
       </div>
 
       <div className="p-10 space-y-12 max-w-2xl mx-auto w-full print:p-0 print:max-w-none">
         <div className="text-center space-y-2 border-b-8 border-slate-900 dark:border-white pb-10">
-          <h2 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter italic uppercase">Report</h2>
+          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter italic uppercase">Report</h1>
           <p className="text-sm font-black text-slate-500 dark:text-slate-500 uppercase tracking-[0.2em]">{config.start.replace(/-/g, '/')} — {config.end.replace(/-/g, '/')}</p>
         </div>
 
@@ -125,9 +94,9 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
 
         {config.includeMeds && (
           <section className="space-y-8">
-            <h3 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3 border-b-2 border-slate-100 dark:border-slate-700 pb-4">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3 border-b-2 border-slate-100 dark:border-slate-700 pb-4">
               <Pill size={28} className="text-emerald-600" /> 服薬達成記録
-            </h3>
+            </h2>
 
             {adherence.totalScheduled === 0 ? (
               <p className="text-sm text-slate-500 dark:text-slate-500 font-bold text-center py-6">この期間に判定できる記録はありません</p>
@@ -142,7 +111,7 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
                   {adherence.perMedication.filter(m => m.scheduledDays > 0).map(med => (
                     <div key={med.medicationId} className="p-6 bg-slate-50 dark:bg-slate-900 rounded-[32px] border border-slate-200 dark:border-slate-700 space-y-3">
                       <div className="flex items-center justify-between">
-                        <h4 className="font-black text-slate-800 dark:text-slate-100">{med.title}</h4>
+                        <h3 className="font-black text-slate-800 dark:text-slate-100">{med.title}</h3>
                         <span className={`text-sm font-black ${med.adherenceRate < 80 ? 'text-red-600' : 'text-emerald-600'}`}>
                           {med.adherenceRate}%
                         </span>
@@ -173,14 +142,19 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
 
         {config.includeCondition && (
           <section className="space-y-8">
-            <h3 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3 border-b-2 border-slate-100 dark:border-slate-700 pb-4">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3 border-b-2 border-slate-100 dark:border-slate-700 pb-4">
               <TrendingUp size={28} className="text-blue-600" /> 体調スコアの推移
-            </h3>
-            <ScoreChart data={chartData} />
+            </h2>
+            <TrendChart
+              series={[{ label: 'スコア', color: '#2563eb', points: chartData.map(d => ({ x: d.date.split('-').slice(1).join('/'), y: d.score })) }]}
+              yMin={0}
+              yMax={10}
+              emptyMessage="推移を表示するには2日以上の記録が必要です"
+            />
 
-            <h3 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3 border-b-2 border-slate-100 dark:border-slate-700 pb-4 mt-12">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3 border-b-2 border-slate-100 dark:border-slate-700 pb-4 mt-12">
               <Smile size={28} className="text-blue-600" /> 日別の詳細
-            </h3>
+            </h2>
             <div className="space-y-4">
               {dateRange.slice().reverse().map(date => {
                 const dateStr = format(date, 'yyyy-MM-dd');
@@ -205,11 +179,117 @@ export const ReportPreviewView: React.FC<ReportPreviewViewProps> = ({ config, me
           </section>
         )}
 
+        {config.includeVitals && (
+          <section className="space-y-8">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3 border-b-2 border-slate-100 dark:border-slate-700 pb-4">
+              <Activity size={28} className="text-red-600" /> バイタル記録
+            </h2>
+            {VITAL_TYPES.every(t => vitalsByType[t].length === 0) ? (
+              <p className="text-sm text-slate-500 dark:text-slate-500 font-bold text-center py-6">この期間の記録はありません</p>
+            ) : (
+              VITAL_TYPES.filter(t => vitalsByType[t].length > 0).map(type => {
+                const records = vitalsByType[type];
+                const latest = records[records.length - 1];
+                return (
+                  <div key={type} className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-black text-slate-800 dark:text-slate-100">{VITAL_TYPE_LABELS[type]}</h3>
+                      <span className="text-sm font-black text-slate-600 dark:text-slate-300">最新: {formatVitalValue(latest)} {VITAL_TYPE_UNITS[type]}</span>
+                    </div>
+                    <TrendChart series={buildVitalSeries(type, records)} />
+                  </div>
+                );
+              })
+            )}
+          </section>
+        )}
+
+        {config.includeAllergies && (
+          <section className="space-y-8">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3 border-b-2 border-slate-100 dark:border-slate-700 pb-4">
+              <Syringe size={28} className="text-orange-600" /> アレルギー・既往歴
+            </h2>
+            {allergies.length === 0 && medicalHistory.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-slate-500 font-bold text-center py-6">記録はありません</p>
+            ) : (
+              <div className="space-y-6">
+                {allergies.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-black text-slate-800 dark:text-slate-100">アレルギー</h3>
+                    {allergies.map(r => (
+                      <div key={r.id} className="p-5 bg-slate-50 dark:bg-slate-900 rounded-[24px] border border-slate-200 dark:border-slate-700">
+                        <p className="font-black text-slate-800 dark:text-slate-100 text-sm">{r.title}{r.severity && ` (${r.severity === 'severe' ? '重度' : r.severity === 'moderate' ? '中等度' : '軽度'})`}</p>
+                        {r.detail && <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">{r.detail}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {medicalHistory.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-black text-slate-800 dark:text-slate-100">既往歴</h3>
+                    {medicalHistory.map(r => (
+                      <div key={r.id} className="p-5 bg-slate-50 dark:bg-slate-900 rounded-[24px] border border-slate-200 dark:border-slate-700">
+                        <p className="font-black text-slate-800 dark:text-slate-100 text-sm">{r.title}{r.diagnosedDate && ` (${r.diagnosedDate})`}</p>
+                        {r.detail && <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">{r.detail}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        {config.includeContacts && (
+          <section className="space-y-8">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3 border-b-2 border-slate-100 dark:border-slate-700 pb-4">
+              <Phone size={28} className="text-teal-600" /> 薬局・病院の連絡先
+            </h2>
+            {!hasContacts ? (
+              <p className="text-sm text-slate-500 dark:text-slate-500 font-bold text-center py-6">連絡先の登録はありません</p>
+            ) : (
+              <div className="p-6 bg-slate-50 dark:bg-slate-900 rounded-[32px] border border-slate-200 dark:border-slate-700 space-y-2 text-sm text-slate-700 dark:text-slate-300 font-bold">
+                {medicalContacts.pharmacyName && <p>薬局: {medicalContacts.pharmacyName} {medicalContacts.pharmacyPhone}</p>}
+                {medicalContacts.hospitalName && <p>病院: {medicalContacts.hospitalName} {medicalContacts.hospitalPhone}</p>}
+                {medicalContacts.doctorName && <p>担当医: {medicalContacts.doctorName}</p>}
+                {medicalContacts.nextAppointment && <p>次回受診予定日: {medicalContacts.nextAppointment}</p>}
+                {medicalContacts.memo && <p className="font-medium text-slate-600 dark:text-slate-400">{medicalContacts.memo}</p>}
+              </div>
+            )}
+          </section>
+        )}
+
+        {config.includeHistory && (
+          <section className="space-y-8">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3 border-b-2 border-slate-100 dark:border-slate-700 pb-4">
+              <History size={28} className="text-purple-600" /> 登録・更新履歴
+            </h2>
+            {globalLogsInRange.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-slate-500 font-bold text-center py-6">この期間の履歴はありません</p>
+            ) : (
+              <div className="space-y-3">
+                {globalLogsInRange.map(log => (
+                  <div key={log.id} className="flex gap-4 p-5 bg-slate-50 dark:bg-slate-900 rounded-[24px] border border-slate-200 dark:border-slate-700">
+                    <div className="w-16 shrink-0 text-center">
+                      <p className="text-xs font-black text-slate-900 dark:text-white">{format(new Date(log.timestamp), 'MM/dd')}</p>
+                    </div>
+                    <div className="flex-1">
+                      <span className="text-[10px] font-black text-purple-600 bg-purple-50 dark:bg-purple-500/10 px-2 py-0.5 rounded-full uppercase tracking-widest">{GLOBAL_LOG_TYPE_LABEL[log.type]}</span>
+                      <p className="text-sm text-slate-700 dark:text-slate-200 font-bold mt-1">{log.title}</p>
+                      {log.details && <p className="text-xs text-slate-500 dark:text-slate-400">{log.details}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
         <div className="text-[10px] text-slate-500 dark:text-slate-600 text-center font-bold uppercase tracking-widest pt-20">
           Generated by MediMate Digital Health Platform
         </div>
       </div>
-      
+
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           .print\\:hidden { display: none !important; }

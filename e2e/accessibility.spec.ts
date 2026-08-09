@@ -132,6 +132,17 @@ test.describe('accessibility @a11y', () => {
     expect(violations, formatViolations(violations)).toEqual([]);
   });
 
+  test('the report preview screen has no detectable a11y violations', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: '設定', exact: true }).click();
+    await page.getByText('レポート作成').click();
+    await page.getByText('レポートを生成する').click();
+    await expect(page.getByRole('heading', { name: 'Report' })).toBeVisible();
+
+    const violations = await scan(page);
+    expect(violations, formatViolations(violations)).toEqual([]);
+  });
+
   test('the settings screen has no detectable a11y violations in English', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: '設定', exact: true }).click();

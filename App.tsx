@@ -589,12 +589,15 @@ const App: React.FC = () => {
           />
         )}
         {view === 'report' && (
-          <ReportPreviewView 
-            config={reportConfig} 
-            medications={medications} 
-            logs={logs} 
+          <ReportPreviewView
+            config={reportConfig}
+            medications={medications}
+            logs={logs}
             conditions={conditions}
             globalLogs={globalLogs}
+            vitals={vitals}
+            medicalRecords={medicalRecords}
+            medicalContacts={medicalContacts}
             onBack={() => setView('report-setup')}
           />
         )}

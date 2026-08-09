@@ -2,8 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { ChevronLeft, Plus, Trash2, Activity, Weight, Thermometer, Droplet } from 'lucide-react';
 import { format } from 'date-fns';
 import { VitalRecord, VitalType } from '../../types';
-import { TrendChart, TrendChartSeries } from '../../components/TrendChart';
+import { TrendChart } from '../../components/TrendChart';
 import { VitalRecordForm } from './VitalRecordForm';
+import { VITAL_TYPES, VITAL_TYPE_LABELS, VITAL_TYPE_UNITS, groupVitalsByType, buildVitalSeries, formatVitalValue } from '../../utils/vitalsChart';
 
 interface VitalsViewProps {
   vitals: VitalRecord[];
@@ -13,43 +14,17 @@ interface VitalsViewProps {
   readOnly?: boolean;
 }
 
-const TYPE_META: Record<VitalType, { label: string; icon: React.ReactNode; color: string; iconClassName: string; unit: string }> = {
-  bloodPressure: { label: '血圧', icon: <Activity size={18} />, color: '#dc2626', iconClassName: 'bg-red-50 dark:bg-red-500/10 text-red-600', unit: 'mmHg' },
-  weight: { label: '体重', icon: <Weight size={18} />, color: '#2563eb', iconClassName: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600', unit: 'kg' },
-  temperature: { label: '体温', icon: <Thermometer size={18} />, color: '#d97706', iconClassName: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600', unit: '℃' },
-  bloodSugar: { label: '血糖値', icon: <Droplet size={18} />, color: '#9333ea', iconClassName: 'bg-purple-50 dark:bg-purple-500/10 text-purple-600', unit: 'mg/dL' },
-};
-
-const VITAL_TYPES: VitalType[] = ['bloodPressure', 'weight', 'temperature', 'bloodSugar'];
-
-const formatValue = (record: VitalRecord): string => {
-  if (record.type === 'bloodPressure') {
-    return `${record.systolic}/${record.diastolic}${record.pulse ? ` (脈${record.pulse})` : ''}`;
-  }
-  return `${record.value}`;
+const TYPE_ICON_CLASSES: Record<VitalType, { icon: React.ReactNode; iconClassName: string }> = {
+  bloodPressure: { icon: <Activity size={18} />, iconClassName: 'bg-red-50 dark:bg-red-500/10 text-red-600' },
+  weight: { icon: <Weight size={18} />, iconClassName: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600' },
+  temperature: { icon: <Thermometer size={18} />, iconClassName: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600' },
+  bloodSugar: { icon: <Droplet size={18} />, iconClassName: 'bg-purple-50 dark:bg-purple-500/10 text-purple-600' },
 };
 
 export const VitalsView: React.FC<VitalsViewProps> = ({ vitals, onSave, onDelete, onClose, readOnly }) => {
   const [showForm, setShowForm] = useState(false);
 
-  const byType = useMemo(() => {
-    const grouped: Record<VitalType, VitalRecord[]> = { bloodPressure: [], weight: [], temperature: [], bloodSugar: [] };
-    vitals.forEach(v => grouped[v.type].push(v));
-    VITAL_TYPES.forEach(t => grouped[t].sort((a, b) => a.timestamp - b.timestamp));
-    return grouped;
-  }, [vitals]);
-
-  const buildSeries = (type: VitalType): TrendChartSeries[] => {
-    const records = byType[type];
-    const label = (r: VitalRecord) => format(new Date(r.timestamp), 'MM/dd');
-    if (type === 'bloodPressure') {
-      return [
-        { label: '最高', color: '#dc2626', points: records.map(r => ({ x: label(r), y: (r as any).systolic })) },
-        { label: '最低', color: '#f97316', points: records.map(r => ({ x: label(r), y: (r as any).diastolic })) },
-      ];
-    }
-    return [{ label: TYPE_META[type].label, color: TYPE_META[type].color, points: records.map(r => ({ x: label(r), y: (r as any).value })) }];
-  };
+  const byType = useMemo(() => groupVitalsByType(vitals), [vitals]);
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="vitals-view-title" className="fixed inset-0 z-50 bg-slate-50 dark:bg-slate-900 flex flex-col animate-in slide-in-from-bottom duration-300">
@@ -68,15 +43,15 @@ export const VitalsView: React.FC<VitalsViewProps> = ({ vitals, onSave, onDelete
           {VITAL_TYPES.filter(t => byType[t].length > 0).map(type => (
             <section key={type} className="space-y-3">
               <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                <span className={`w-8 h-8 rounded-xl flex items-center justify-center ${TYPE_META[type].iconClassName}`}>{TYPE_META[type].icon}</span>
-                {TYPE_META[type].label}
+                <span className={`w-8 h-8 rounded-xl flex items-center justify-center ${TYPE_ICON_CLASSES[type].iconClassName}`}>{TYPE_ICON_CLASSES[type].icon}</span>
+                {VITAL_TYPE_LABELS[type]}
               </h3>
-              <TrendChart series={buildSeries(type)} />
+              <TrendChart series={buildVitalSeries(type, byType[type])} />
               <div className="space-y-2">
                 {byType[type].slice().reverse().map(record => (
                   <div key={record.id} className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 flex items-center justify-between">
                     <div>
-                      <p className="font-black text-slate-800 dark:text-slate-100 text-sm">{formatValue(record)} <span className="text-[10px] font-bold text-slate-500 dark:text-slate-500">{TYPE_META[type].unit}</span></p>
+                      <p className="font-black text-slate-800 dark:text-slate-100 text-sm">{formatVitalValue(record)} <span className="text-[10px] font-bold text-slate-500 dark:text-slate-500">{VITAL_TYPE_UNITS[type]}</span></p>
                       <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold">{format(new Date(record.timestamp), 'yyyy/MM/dd')}{record.memo ? ` ・ ${record.memo}` : ''}</p>
                     </div>
                     {!readOnly && (

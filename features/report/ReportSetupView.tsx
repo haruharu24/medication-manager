@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { ChevronLeft, FileDown, CheckSquare, Square, Pill, Smile, History } from 'lucide-react';
+import { ChevronLeft, FileDown, CheckSquare, Square, Pill, Smile, History, Activity, Syringe, Phone } from 'lucide-react';
 import { ReportConfig } from '../../types';
 
 interface ReportSetupViewProps {
@@ -39,6 +39,9 @@ export const ReportSetupView: React.FC<ReportSetupViewProps> = ({ config, setCon
           <div className="bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 shadow-sm divide-y divide-slate-50 dark:divide-slate-800 overflow-hidden">
             <OptionRow label="服薬達成記録" active={config.includeMeds} onClick={() => setConfig({...config, includeMeds: !config.includeMeds})} icon={<Pill size={20}/>} color="emerald" />
             <OptionRow label="体調ログとメモ" active={config.includeCondition} onClick={() => setConfig({...config, includeCondition: !config.includeCondition})} icon={<Smile size={20}/>} color="blue" />
+            <OptionRow label="バイタル記録" active={config.includeVitals} onClick={() => setConfig({...config, includeVitals: !config.includeVitals})} icon={<Activity size={20}/>} color="red" />
+            <OptionRow label="アレルギー・既往歴" active={config.includeAllergies} onClick={() => setConfig({...config, includeAllergies: !config.includeAllergies})} icon={<Syringe size={20}/>} color="orange" />
+            <OptionRow label="薬局・病院の連絡先" active={config.includeContacts} onClick={() => setConfig({...config, includeContacts: !config.includeContacts})} icon={<Phone size={20}/>} color="teal" />
             <OptionRow label="登録・更新履歴" active={config.includeHistory} onClick={() => setConfig({...config, includeHistory: !config.includeHistory})} icon={<History size={20}/>} color="purple" />
           </div>
         </section>
@@ -61,6 +64,9 @@ const OPTION_ROW_COLOR_CLASSES: Record<string, string> = {
   emerald: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600',
   blue: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600',
   purple: 'bg-purple-50 dark:bg-purple-500/10 text-purple-600',
+  red: 'bg-red-50 dark:bg-red-500/10 text-red-600',
+  orange: 'bg-orange-50 dark:bg-orange-500/10 text-orange-700',
+  teal: 'bg-teal-50 dark:bg-teal-500/10 text-teal-600',
 };
 
 const OptionRow = ({ label, active, onClick, icon, color }: any) => (
