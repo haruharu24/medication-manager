@@ -15,9 +15,11 @@ export interface InteractionCheckResult {
   summary: string;
 }
 
-// Uses the same Gemini integration already wired up for お薬手帳 scanning (App.tsx
-// handleScan). Results are general-knowledge flags, not a medical judgement — the
-// UI must always pair this with a disclaimer to consult a doctor/pharmacist.
+// The only feature in this app still calling the Gemini API — お薬手帳 scanning
+// (App.tsx handleScan) moved to client-side OCR (utils/ocrRecognize.ts) to avoid
+// per-scan API cost. Results here are general-knowledge flags, not a medical
+// judgement — the UI must always pair this with a disclaimer to consult a
+// doctor/pharmacist.
 export const checkInteractions = async (medications: Medication[]): Promise<InteractionCheckResult> => {
   const targets = medications.filter(m => !m.isFolder);
   const medList = targets

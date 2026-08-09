@@ -17,8 +17,8 @@ import { ReportPreviewView } from './features/report/ReportPreviewView';
 import { ReminderOverlay } from './components/ReminderOverlay';
 import { OnboardingOverlay } from './components/OnboardingOverlay';
 import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload, ShieldAlert, Moon, Sun, HelpCircle } from 'lucide-react';
-// Fix: Import GoogleGenAI and Type for AI-powered scanning
-import { GoogleGenAI, Type } from "@google/genai";
+import { recognizeImages } from './utils/ocrRecognize';
+import { parseOcrTextToMedication } from './utils/ocrParse';
 import { markMedicationTaken } from './utils/medicationActions';
 import { migrateFromLocalStorage } from './db/migration';
 import { getAllMedications } from './db/medications';
@@ -76,6 +76,7 @@ const App: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
   const [scanDrafts, setScanDrafts] = useState<Medication[] | null>(null);
 
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -470,74 +471,34 @@ const App: React.FC = () => {
     setIsFormOpen(true);
   };
 
-  // Fix: Added handleScan implementation using Gemini AI to extract medication data
-  // Accepts one or more photos (multi-page お薬手帳) and analyzes them together in a
-  // single request so duplicate entries across pages can be reconciled by the model.
+  // Accepts one or more photos (multi-page お薬手帳) and runs client-side OCR
+  // (Tesseract.js, see utils/ocrRecognize.ts) on each, one draft per photo — no
+  // AI/network call, so no per-scan cost. Unlike the AI it replaced, this can't
+  // split multiple medications out of a single photo (see CameraModal's hint).
   const handleScan = async (base64Images: string[]) => {
     setIsCameraOpen(false);
     setIsScanning(true);
+    setScanProgress({ done: 0, total: base64Images.length });
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: {
-          parts: [
-            ...base64Images.map(data => ({ inlineData: { data, mimeType: 'image/jpeg' } })),
-            { text: `お薬手帳の画像(${base64Images.length}枚)を解析して、記載されているお薬のリストを抽出し、指定されたJSON形式で返してください。複数枚にまたがる場合はすべてのページを合わせて1つのリストにまとめ、同じお薬が重複して写っている場合は1件にまとめてください。日本語で回答してください。不明な項目はデフォルト値（錠、朝食後など）を使用してください。` }
-          ]
-        },
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING, description: "お薬の名前" },
-                dosage: { type: Type.NUMBER, description: "1回の服用量（数値のみ）" },
-                unit: { type: Type.STRING, description: "単位（錠、カプセル、包など）" },
-                label: { type: Type.STRING, description: "服用タイミング（朝食後、夕食後など）" },
-                memo: { type: Type.STRING, description: "補足情報" },
-                stock: { type: Type.NUMBER, description: "処方された総数（在庫）" }
-              },
-              required: ["title", "dosage", "unit", "label"]
-            }
-          }
-        }
-      });
-
-      const jsonStr = response.text?.trim();
-      if (jsonStr) {
-        const results = JSON.parse(jsonStr);
-        if (Array.isArray(results) && results.length > 0) {
-          const drafts: Medication[] = results.map(res => ({
-            id: crypto.randomUUID(),
-            title: res.title || '不明なお薬',
-            dosage: res.dosage || 1,
-            unit: (UNITS.includes(res.unit as any) ? res.unit : '錠') as any,
-            label: (LABELS.includes(res.label as any) ? res.label : '朝食後') as any,
-            stock: res.stock || 0,
-            memo: res.memo || '',
-            color: 'emerald',
-            startDate: Date.now(),
-            isFolder: false,
-          }));
-          setScanDrafts(drafts);
-        } else {
-          alert("お薬の情報を読み取れませんでした。手動で入力してください。");
-        }
+      const texts = await recognizeImages(base64Images, (done, total) => setScanProgress({ done, total }));
+      const drafts = texts.map(parseOcrTextToMedication).filter((m): m is Medication => m !== null);
+      if (drafts.length > 0) {
+        setScanDrafts(drafts);
+      } else {
+        alert("お薬の情報を読み取れませんでした。手動で入力してください。");
       }
     } catch (error) {
-      console.error("AI scanning error:", error);
-      alert("AIによる読み取りに失敗しました。手動で入力してください。");
+      console.error("OCR scanning error:", error);
+      alert("文字の読み取りに失敗しました。手動で入力してください。");
     } finally {
       setIsScanning(false);
+      setScanProgress(null);
     }
   };
 
   const handleConfirmScanReview = (meds: Medication[]) => {
     setMedications(prev => [...prev, ...meds]);
-    meds.forEach(med => addGlobalLog('scan', med.title, 'AIスキャンにより追加しました'));
+    meds.forEach(med => addGlobalLog('scan', med.title, 'スキャンにより追加しました'));
     setScanDrafts(null);
   };
 
@@ -788,13 +749,15 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Fix: Passed handleScan to the CameraModal */}
       {isCameraOpen && <CameraModal onCapture={handleScan} onCancel={() => setIsCameraOpen(false)} />}
-      
+
       {isScanning && (
         <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-md flex flex-col items-center justify-center text-white">
           <Loader2 size={48} className="animate-spin mb-4 text-emerald-400" />
-          <p className="font-bold tracking-widest uppercase text-xs">AI Scanning...</p>
+          <p className="font-bold tracking-widest uppercase text-xs">
+            文字を読み取っています…
+            {scanProgress && scanProgress.total > 1 ? `(${scanProgress.done}/${scanProgress.total}枚)` : ''}
+          </p>
         </div>
       )}
 

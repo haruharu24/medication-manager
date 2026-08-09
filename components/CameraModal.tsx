@@ -131,7 +131,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({ onCapture, onCancel })
             <div className="mt-10 flex items-start gap-3 p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 text-left">
               <AlertCircle size={16} className="text-emerald-400 shrink-0 mt-0.5" />
               <p className="text-[11px] leading-relaxed text-slate-500">
-                <span className="text-emerald-400 font-bold">ヒント:</span> 名前や用量がはっきり写るように撮影してください。影が入らないように明るい場所がおすすめです。
+                <span className="text-emerald-400 font-bold">ヒント:</span> 名前や用量がはっきり写るように撮影してください。影が入らないように明るい場所がおすすめです。1枚に1種類のお薬が写るように撮影すると読み取り精度が上がります。
               </p>
             </div>
           </>
