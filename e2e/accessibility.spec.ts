@@ -122,6 +122,16 @@ test.describe('accessibility @a11y', () => {
     expect(violations, formatViolations(violations)).toEqual([]);
   });
 
+  test('the pharmacy/hospital contacts screen has no detectable a11y violations', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: '設定', exact: true }).click();
+    await page.getByText('薬局・病院の連絡先').click();
+    await expect(page.getByRole('heading', { name: '薬局・病院の連絡先' })).toBeVisible();
+
+    const violations = await scan(page);
+    expect(violations, formatViolations(violations)).toEqual([]);
+  });
+
   test('the settings screen has no detectable a11y violations in English', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: '設定', exact: true }).click();
