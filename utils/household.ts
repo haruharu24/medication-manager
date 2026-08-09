@@ -1,5 +1,5 @@
 import { apiRequest, getWsUrl } from './api';
-import { Medication, MedicationLog, GlobalActionLog, DailyCondition } from '../types';
+import { Medication, MedicationLog, GlobalActionLog, DailyCondition, VitalRecord, MedicalRecord, MedicalContacts } from '../types';
 
 export interface Household {
   id: string;
@@ -25,6 +25,9 @@ export interface SyncedData {
   logs: MedicationLog[];
   globalLogs: GlobalActionLog[];
   conditions: DailyCondition[];
+  vitals: VitalRecord[];
+  medicalRecords: MedicalRecord[];
+  medicalContacts: MedicalContacts;
 }
 
 export const fetchMe = (token: string) =>

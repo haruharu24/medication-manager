@@ -56,7 +56,7 @@ describe('household API wrappers', () => {
     await leaveHousehold('tok', 'h1');
     await fetchMembers('tok', 'h1');
     await fetchHouseholdData('tok', 'h1');
-    await pushHouseholdData('tok', 'h1', { medications: [], logs: [], globalLogs: [], conditions: [] });
+    await pushHouseholdData('tok', 'h1', { medications: [], logs: [], globalLogs: [], conditions: [], vitals: [], medicalRecords: [], medicalContacts: {} });
 
     const paths = mockedApiRequest.mock.calls.map(call => call[0]);
     expect(paths).toEqual([

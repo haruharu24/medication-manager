@@ -8,7 +8,7 @@ import { ScanReviewModal } from './components/ScanReviewModal';
 import { QuickLogSheet } from './components/QuickLogSheet';
 import { InteractionCheckModal } from './components/InteractionCheckModal';
 import { AccountPanel } from './components/AccountPanel';
-import { Medication, MedicationLog, ViewMode, DailyCondition, GlobalActionLog, ReportConfig, ReminderSettings } from './types';
+import { Medication, MedicationLog, ViewMode, DailyCondition, GlobalActionLog, ReportConfig, ReminderSettings, VitalRecord, MedicalRecord, MedicalContacts } from './types';
 import { UNITS, LABELS } from './constants';
 import { HomeView } from './features/home/HomeView';
 import { MedicationListView } from './features/meds/MedicationListView';
@@ -26,7 +26,10 @@ import { getAllLogs } from './db/logs';
 import { getAllConditions } from './db/conditions';
 import { getAllGlobalLogs } from './db/globalLogs';
 import { getReminderSettings, saveReminderSettings } from './db/settings';
-import { replaceAllMedications, replaceAllLogs, replaceAllConditions, replaceAllGlobalLogs, resetAllData } from './db/bulk';
+import { getAllVitals } from './db/vitals';
+import { getAllMedicalRecords } from './db/medicalRecords';
+import { getMedicalContacts, saveMedicalContacts } from './db/contacts';
+import { replaceAllMedications, replaceAllLogs, replaceAllConditions, replaceAllGlobalLogs, replaceAllVitals, replaceAllMedicalRecords, resetAllData } from './db/bulk';
 import { drainPendingActions, PendingAction } from './utils/pendingActionsDb';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, PushReminder } from './utils/push';
 import { useI18n } from './i18n';
@@ -54,7 +57,10 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<MedicationLog[]>([]);
   const [globalLogs, setGlobalLogs] = useState<GlobalActionLog[]>([]);
   const [conditions, setConditions] = useState<DailyCondition[]>([]);
-  
+  const [vitals, setVitals] = useState<VitalRecord[]>([]);
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
+  const [medicalContacts, setMedicalContacts] = useState<MedicalContacts>({});
+
   const [reminderSettings, setReminderSettings] = useState<ReminderSettings>({
     enabled: false,
     time: '08:00',
@@ -69,7 +75,10 @@ const App: React.FC = () => {
     end: format(new Date(), 'yyyy-MM-dd'),
     includeMeds: true,
     includeCondition: true,
-    includeHistory: true
+    includeHistory: true,
+    includeVitals: true,
+    includeAllergies: true,
+    includeContacts: true
   });
 
   const [editingMed, setEditingMed] = useState<Medication | null>(null);
@@ -114,12 +123,15 @@ const App: React.FC = () => {
   const suppressNextPushRef = useRef(false);
   const initialSyncDoneRef = useRef(false);
 
-  const applyRemoteData = (data: { medications: Medication[]; logs: MedicationLog[]; globalLogs: GlobalActionLog[]; conditions: DailyCondition[] }) => {
+  const applyRemoteData = (data: { medications: Medication[]; logs: MedicationLog[]; globalLogs: GlobalActionLog[]; conditions: DailyCondition[]; vitals: VitalRecord[]; medicalRecords: MedicalRecord[]; medicalContacts: MedicalContacts }) => {
     suppressNextPushRef.current = true;
     setMedications(data.medications || []);
     setLogs(data.logs || []);
     setGlobalLogs(data.globalLogs || []);
     setConditions(data.conditions || []);
+    setVitals(data.vitals || []);
+    setMedicalRecords(data.medicalRecords || []);
+    setMedicalContacts(data.medicalContacts || {});
   };
 
   const refreshHouseholds = useCallback(async (currentAuth: StoredAuth) => {
@@ -160,7 +172,7 @@ const App: React.FC = () => {
         if (updatedAt && data) {
           applyRemoteData(data);
         } else if (!isViewer) {
-          await pushHouseholdData(auth.token, activeHouseholdId, { medications, logs, globalLogs, conditions });
+          await pushHouseholdData(auth.token, activeHouseholdId, { medications, logs, globalLogs, conditions, vitals, medicalRecords, medicalContacts });
         }
         if (!cancelled) { setSyncStatus('synced'); setSyncError(null); }
       } catch (e) {
@@ -192,13 +204,13 @@ const App: React.FC = () => {
 
     const timer = setTimeout(() => {
       setSyncStatus('syncing');
-      pushHouseholdData(auth.token, activeHouseholdId, { medications, logs, globalLogs, conditions })
+      pushHouseholdData(auth.token, activeHouseholdId, { medications, logs, globalLogs, conditions, vitals, medicalRecords, medicalContacts })
         .then(() => { setSyncStatus('synced'); setSyncError(null); })
         .catch(e => { setSyncStatus('error'); setSyncError(e instanceof Error ? e.message : '同期に失敗しました'); });
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [medications, logs, globalLogs, conditions, settingsLoaded, auth, activeHouseholdId, isViewer]);
+  }, [medications, logs, globalLogs, conditions, vitals, medicalRecords, medicalContacts, settingsLoaded, auth, activeHouseholdId, isViewer]);
 
   const handleLogin = async (email: string, password: string) => { setAuth(await apiLogin(email, password)); };
   const handleRegister = async (email: string, password: string) => { setAuth(await apiRegister(email, password)); };
@@ -246,12 +258,15 @@ const App: React.FC = () => {
     (async () => {
       try {
         await migrateFromLocalStorage();
-        const [meds, ls, gLogs, conds, settings] = await Promise.all([
+        const [meds, ls, gLogs, conds, settings, vits, medRecs, contacts] = await Promise.all([
           getAllMedications(),
           getAllLogs(),
           getAllGlobalLogs(),
           getAllConditions(),
           getReminderSettings(),
+          getAllVitals(),
+          getAllMedicalRecords(),
+          getMedicalContacts(),
         ]);
         if (cancelled) return;
         setMedications(meds);
@@ -259,6 +274,9 @@ const App: React.FC = () => {
         setGlobalLogs(gLogs);
         setConditions(conds);
         setReminderSettings(settings);
+        setVitals(vits);
+        setMedicalRecords(medRecs);
+        setMedicalContacts(contacts);
 
         // Check if we should show the reminder overlay
         const today = format(new Date(), 'yyyy-MM-dd');
@@ -296,8 +314,11 @@ const App: React.FC = () => {
       replaceAllGlobalLogs(globalLogs),
       replaceAllConditions(conditions),
       saveReminderSettings(reminderSettings),
+      replaceAllVitals(vitals),
+      replaceAllMedicalRecords(medicalRecords),
+      saveMedicalContacts(medicalContacts),
     ]).catch(e => console.error("Failed to persist data", e));
-  }, [medications, logs, globalLogs, conditions, reminderSettings, settingsLoaded]);
+  }, [medications, logs, globalLogs, conditions, reminderSettings, vitals, medicalRecords, medicalContacts, settingsLoaded]);
 
   const addGlobalLog = (type: GlobalActionLog['type'], title: string, details?: string) => {
     const newLog: GlobalActionLog = { id: crypto.randomUUID(), timestamp: Date.now(), type, title, details };
@@ -410,7 +431,7 @@ const App: React.FC = () => {
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const handleExportBackup = () => {
-    const backup = buildBackup({ medications, logs, globalLogs, conditions, reminderSettings });
+    const backup = buildBackup({ medications, logs, globalLogs, conditions, reminderSettings, vitals, medicalRecords, medicalContacts });
     downloadBackup(backup);
   };
 
@@ -427,6 +448,9 @@ const App: React.FC = () => {
       setGlobalLogs(backup.globalLogs);
       setConditions(backup.conditions);
       setReminderSettings(backup.reminderSettings);
+      setVitals(backup.vitals);
+      setMedicalRecords(backup.medicalRecords);
+      setMedicalContacts(backup.medicalContacts);
       alert('データを復元しました');
     } catch (err) {
       alert(err instanceof Error ? err.message : 'インポートに失敗しました');

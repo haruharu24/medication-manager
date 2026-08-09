@@ -3,10 +3,11 @@ import { buildBackup, downloadBackup, parseBackupFile, BACKUP_VERSION } from './
 import { ReminderSettings } from '../types';
 
 const emptyReminder: ReminderSettings = { enabled: false, time: '08:00', lastCheckedDate: '' };
+const emptyExtras = { vitals: [], medicalRecords: [], medicalContacts: {} };
 
 describe('buildBackup', () => {
   it('stamps the current version and an ISO export timestamp', () => {
-    const backup = buildBackup({ medications: [], logs: [], globalLogs: [], conditions: [], reminderSettings: emptyReminder });
+    const backup = buildBackup({ medications: [], logs: [], globalLogs: [], conditions: [], reminderSettings: emptyReminder, ...emptyExtras });
     expect(backup.version).toBe(BACKUP_VERSION);
     expect(() => new Date(backup.exportedAt).toISOString()).not.toThrow();
     expect(new Date(backup.exportedAt).toISOString()).toBe(backup.exportedAt);
@@ -19,6 +20,7 @@ describe('buildBackup', () => {
       globalLogs: [],
       conditions: [],
       reminderSettings: emptyReminder,
+      ...emptyExtras,
     });
     expect(backup.medications).toEqual([{ id: 'm1' }]);
   });
@@ -31,7 +33,7 @@ describe('downloadBackup', () => {
 
   it('creates and clicks a download link, then revokes the object URL', () => {
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    const backup = buildBackup({ medications: [], logs: [], globalLogs: [], conditions: [], reminderSettings: emptyReminder });
+    const backup = buildBackup({ medications: [], logs: [], globalLogs: [], conditions: [], reminderSettings: emptyReminder, ...emptyExtras });
 
     downloadBackup(backup);
 
@@ -52,6 +54,9 @@ describe('parseBackupFile', () => {
     globalLogs: [],
     conditions: [],
     reminderSettings: emptyReminder,
+    vitals: [],
+    medicalRecords: [],
+    medicalContacts: {},
   };
 
   it('resolves with the parsed backup when the shape is valid', async () => {
@@ -67,5 +72,11 @@ describe('parseBackupFile', () => {
   it('rejects when required arrays are missing', async () => {
     const file = new File([JSON.stringify({ medications: [] })], 'backup.json', { type: 'application/json' });
     await expect(parseBackupFile(file)).rejects.toThrow('バックアップファイルの形式が正しくありません');
+  });
+
+  it('defaults vitals/medicalRecords/medicalContacts when importing an older backup file', async () => {
+    const { vitals, medicalRecords, medicalContacts, ...legacyBackup } = validBackup;
+    const file = new File([JSON.stringify(legacyBackup)], 'backup.json', { type: 'application/json' });
+    await expect(parseBackupFile(file)).resolves.toEqual(validBackup);
   });
 });
