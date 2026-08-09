@@ -38,7 +38,7 @@ import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, PushRemind
 import { useI18n } from './i18n';
 import { buildBackup, downloadBackup, parseBackupFile } from './utils/backup';
 import { Theme, getStoredTheme, applyTheme } from './utils/theme';
-import { StoredAuth, getStoredAuth, clearStoredAuth, login as apiLogin, register as apiRegister } from './utils/auth';
+import { StoredAuth, getStoredAuth, clearStoredAuth, login as apiLogin, register as apiRegister, deleteAccount as apiDeleteAccount } from './utils/auth';
 import {
   Household,
   HouseholdMember,
@@ -50,6 +50,7 @@ import {
   fetchHouseholdData,
   pushHouseholdData,
   updateMemberRole as apiUpdateMemberRole,
+  transferOwnership as apiTransferOwnership,
   connectHouseholdSocket,
 } from './utils/household';
 
@@ -252,6 +253,25 @@ const App: React.FC = () => {
     if (!auth || !activeHouseholdId) return;
     const { members } = await apiUpdateMemberRole(auth.token, activeHouseholdId, userId, role);
     setHouseholdMembers(members);
+  };
+
+  const handleTransferOwnership = async (newOwnerId: string) => {
+    if (!auth || !activeHouseholdId) return;
+    const { members } = await apiTransferOwnership(auth.token, activeHouseholdId, newOwnerId);
+    setHouseholdMembers(members);
+    await refreshHouseholds(auth);
+  };
+
+  // Deletes the account server-side, then behaves like handleLogout locally.
+  // Device-local IndexedDB data is intentionally left alone — the app supports
+  // fully local (accountless) use, so "delete my account" doesn't mean "wipe
+  // this device's medication records."
+  const handleDeleteAccount = async (password: string) => {
+    if (!auth) return;
+    await apiDeleteAccount(auth.token, password);
+    clearStoredAuth();
+    setAuth(null);
+    setActiveHouseholdId(null);
   };
 
   // Keeps the pending-action drain logic (which can fire from a service worker
@@ -708,6 +728,8 @@ const App: React.FC = () => {
                 onSelectHousehold={setActiveHouseholdId}
                 onLeaveHousehold={handleLeaveHousehold}
                 onUpdateMemberRole={handleUpdateMemberRole}
+                onTransferOwnership={handleTransferOwnership}
+                onDeleteAccount={handleDeleteAccount}
               />
 
               <button onClick={() => setShowVitals(true)} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">

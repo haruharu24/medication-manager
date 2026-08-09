@@ -143,6 +143,20 @@ test.describe('accessibility @a11y', () => {
     expect(violations, formatViolations(violations)).toEqual([]);
   });
 
+  test('the delete-account confirmation modal has no detectable a11y violations', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: '設定', exact: true }).click();
+    await page.getByRole('button', { name: '新規登録' }).click();
+    await page.getByPlaceholder('メールアドレス').fill(`a11y-delete-${Date.now()}@example.com`);
+    await page.getByPlaceholder('パスワード(8文字以上)').fill('password123');
+    await page.getByRole('button', { name: 'アカウントを作成する' }).click();
+    await page.getByRole('button', { name: /アカウントを削除/ }).click();
+    await expect(page.getByRole('dialog', { name: 'アカウントを削除' })).toBeVisible();
+
+    const violations = await scan(page);
+    expect(violations, formatViolations(violations)).toEqual([]);
+  });
+
   test('the settings screen has no detectable a11y violations in English', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: '設定', exact: true }).click();

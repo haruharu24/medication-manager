@@ -52,6 +52,13 @@ export const updateMemberRole = (token: string, householdId: string, userId: str
     body: { role },
   });
 
+export const transferOwnership = (token: string, householdId: string, newOwnerId: string) =>
+  apiRequest<{ members: HouseholdMember[] }>(`/api/households/${householdId}/transfer-ownership`, {
+    method: 'POST',
+    token,
+    body: { newOwnerId },
+  });
+
 export const fetchHouseholdData = (token: string, householdId: string) =>
   apiRequest<{ data: SyncedData | null; updatedAt: string | null }>(`/api/households/${householdId}/data`, { token });
 

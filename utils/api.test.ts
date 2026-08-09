@@ -57,6 +57,27 @@ describe('apiRequest', () => {
     await expect(apiRequest('/api/auth/login', { method: 'POST' })).rejects.toBeInstanceOf(ApiError);
   });
 
+  it('attaches the full parsed error body as .data, for callers that need more than the message', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: '先に権限を移譲してください', code: 'OWNER_MUST_TRANSFER_OWNERSHIP', households: [{ id: 'h1', name: '世帯' }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      await apiRequest('/api/auth/me', { method: 'DELETE' });
+      expect.unreachable('apiRequest should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      expect((e as ApiError).data).toEqual({
+        error: '先に権限を移譲してください',
+        code: 'OWNER_MUST_TRANSFER_OWNERSHIP',
+        households: [{ id: 'h1', name: '世帯' }],
+      });
+    }
+  });
+
   it('falls back to a generic message when the error body cannot be parsed', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,

@@ -50,6 +50,13 @@ const putJson = (path, body, token) =>
     body: JSON.stringify(body),
   });
 
+const deleteJson = (path, body, token) =>
+  fetch(`${baseUrl}${path}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body ?? {}),
+  });
+
 describe('auth API', () => {
   it('registers a new account and returns a usable token', async () => {
     const res = await postJson('/api/auth/register', { email: 'alice@example.com', password: 'password123' });
@@ -242,6 +249,84 @@ describe('household lifecycle + data sync', () => {
     const msg = await updatePromise;
     expect(msg.type).toBe('data-updated');
     ws.close();
+  });
+});
+
+describe('ownership transfer + account deletion', () => {
+  it('lets the owner transfer ownership to another member', async () => {
+    const ownerReg = await postJson('/api/auth/register', { email: 'xfer-owner@example.com', password: 'password123' });
+    const { token: ownerToken } = await ownerReg.json();
+    const { household } = await (await postJson('/api/households', { name: '世帯' }, ownerToken)).json();
+
+    const memberReg = await postJson('/api/auth/register', { email: 'xfer-member@example.com', password: 'password123' });
+    const { token: memberToken, user: member } = await memberReg.json();
+    await postJson('/api/households/join', { inviteCode: household.inviteCode }, memberToken);
+
+    const res = await postJson(`/api/households/${household.id}/transfer-ownership`, { newOwnerId: member.id }, ownerToken);
+    expect(res.status).toBe(200);
+    const { members } = await res.json();
+    expect(members.find(m => m.userId === member.id).role).toBe('owner');
+  });
+
+  it('rejects a transfer attempted by a non-owner, or to a non-member', async () => {
+    const ownerReg = await postJson('/api/auth/register', { email: 'xfer-owner2@example.com', password: 'password123' });
+    const { token: ownerToken } = await ownerReg.json();
+    const { household } = await (await postJson('/api/households', { name: '世帯' }, ownerToken)).json();
+
+    const memberReg = await postJson('/api/auth/register', { email: 'xfer-member2@example.com', password: 'password123' });
+    const { token: memberToken, user: member } = await memberReg.json();
+    await postJson('/api/households/join', { inviteCode: household.inviteCode }, memberToken);
+
+    const forbiddenRes = await postJson(`/api/households/${household.id}/transfer-ownership`, { newOwnerId: member.id }, memberToken);
+    expect(forbiddenRes.status).toBe(403);
+
+    const notMemberRes = await postJson(`/api/households/${household.id}/transfer-ownership`, { newOwnerId: 'nobody' }, ownerToken);
+    expect(notMemberRes.status).toBe(404);
+  });
+
+  it('rejects deletion with the wrong password', async () => {
+    await postJson('/api/auth/register', { email: 'del-wrongpw@example.com', password: 'password123' });
+    const { token } = await (await postJson('/api/auth/login', { email: 'del-wrongpw@example.com', password: 'password123' })).json();
+
+    const res = await deleteJson('/api/auth/me', { password: 'not-the-password' }, token);
+    expect(res.status).toBe(401);
+  });
+
+  it('deletes the account with the correct password, invalidating the old token afterwards', async () => {
+    await postJson('/api/auth/register', { email: 'del-ok@example.com', password: 'password123' });
+    const { token } = await (await postJson('/api/auth/login', { email: 'del-ok@example.com', password: 'password123' })).json();
+
+    const res = await deleteJson('/api/auth/me', { password: 'password123' }, token);
+    expect(res.status).toBe(200);
+
+    // The JWT is still cryptographically valid for 30 days, but requireAuth
+    // re-looks-up the user on every request, so a deleted account's old token
+    // naturally stops working without any separate revocation list.
+    const afterRes = await getJson('/api/auth/me', token);
+    expect(afterRes.status).toBe(401);
+  });
+
+  it('blocks deleting an owner of a household with other members, and unblocks after transferring ownership', async () => {
+    const ownerReg = await postJson('/api/auth/register', { email: 'del-blocked-owner@example.com', password: 'password123' });
+    const { token: ownerToken } = await ownerReg.json();
+    const { household } = await (await postJson('/api/households', { name: '削除ブロック世帯' }, ownerToken)).json();
+
+    const memberReg = await postJson('/api/auth/register', { email: 'del-blocked-member@example.com', password: 'password123' });
+    const { token: memberToken, user: member } = await memberReg.json();
+    await postJson('/api/households/join', { inviteCode: household.inviteCode }, memberToken);
+
+    const blockedRes = await deleteJson('/api/auth/me', { password: 'password123' }, ownerToken);
+    expect(blockedRes.status).toBe(409);
+    const blockedBody = await blockedRes.json();
+    expect(blockedBody.code).toBe('OWNER_MUST_TRANSFER_OWNERSHIP');
+    expect(blockedBody.households).toEqual([{ id: household.id, name: household.name }]);
+
+    // Still logged in and the household untouched after the blocked attempt.
+    expect((await getJson('/api/auth/me', ownerToken)).status).toBe(200);
+
+    await postJson(`/api/households/${household.id}/transfer-ownership`, { newOwnerId: member.id }, ownerToken);
+    const okRes = await deleteJson('/api/auth/me', { password: 'password123' }, ownerToken);
+    expect(okRes.status).toBe(200);
   });
 });
 

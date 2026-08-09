@@ -131,6 +131,104 @@ describe('member roles', () => {
   });
 });
 
+describe('transferOwnership', () => {
+  it('makes the target member the new owner and demotes the previous owner to editor', () => {
+    const owner = store.createUser({ email: 'transfer-owner@example.com', passwordHash: 'hash' });
+    const joiner = store.createUser({ email: 'transfer-joiner@example.com', passwordHash: 'hash' });
+    const household = store.createHousehold({ name: '世帯', ownerId: owner.id });
+    store.joinHouseholdByInviteCode({ inviteCode: household.inviteCode, userId: joiner.id });
+
+    const updated = store.transferOwnership({ householdId: household.id, currentOwnerId: owner.id, newOwnerId: joiner.id });
+
+    expect(updated.ownerId).toBe(joiner.id);
+    expect(store.getMemberRole(household.id, joiner.id)).toBe('owner');
+    expect(store.getMemberRole(household.id, owner.id)).toBe('editor');
+  });
+
+  it('refuses when the caller is not the current owner', () => {
+    const owner = store.createUser({ email: 'transfer-owner2@example.com', passwordHash: 'hash' });
+    const joiner = store.createUser({ email: 'transfer-joiner2@example.com', passwordHash: 'hash' });
+    const household = store.createHousehold({ name: '世帯', ownerId: owner.id });
+    store.joinHouseholdByInviteCode({ inviteCode: household.inviteCode, userId: joiner.id });
+
+    expect(() => store.transferOwnership({ householdId: household.id, currentOwnerId: joiner.id, newOwnerId: joiner.id }))
+      .toThrow('NOT_OWNER');
+  });
+
+  it('refuses when the target is not a member of the household', () => {
+    const owner = store.createUser({ email: 'transfer-owner3@example.com', passwordHash: 'hash' });
+    const household = store.createHousehold({ name: '世帯', ownerId: owner.id });
+
+    expect(() => store.transferOwnership({ householdId: household.id, currentOwnerId: owner.id, newOwnerId: 'nobody' }))
+      .toThrow('NOT_A_MEMBER');
+  });
+});
+
+describe('deleteUser', () => {
+  it('deletes a user with no household memberships', () => {
+    const user = store.createUser({ email: 'delete-plain@example.com', passwordHash: 'hash' });
+    store.deleteUser(user.id);
+    expect(store.findUserById(user.id)).toBeNull();
+  });
+
+  it('deletes the household too when the user is its sole member/owner', () => {
+    const owner = store.createUser({ email: 'delete-solo-owner@example.com', passwordHash: 'hash' });
+    const household = store.createHousehold({ name: '一人世帯', ownerId: owner.id });
+    store.setHouseholdData(household.id, { medications: [] });
+
+    store.deleteUser(owner.id);
+
+    expect(store.findUserById(owner.id)).toBeNull();
+    expect(store.getHouseholdById(household.id)).toBeNull();
+    expect(store.getHouseholdData(household.id)).toBeNull();
+  });
+
+  it('refuses to delete an owner of a household that still has other members, without writing anything', () => {
+    const owner = store.createUser({ email: 'delete-blocked-owner@example.com', passwordHash: 'hash' });
+    const joiner = store.createUser({ email: 'delete-blocked-joiner@example.com', passwordHash: 'hash' });
+    const household = store.createHousehold({ name: '複数人世帯', ownerId: owner.id });
+    store.joinHouseholdByInviteCode({ inviteCode: household.inviteCode, userId: joiner.id });
+
+    expect(() => store.deleteUser(owner.id)).toThrow('OWNER_MUST_TRANSFER_OWNERSHIP');
+
+    // Nothing should have been deleted by the failed attempt.
+    expect(store.findUserById(owner.id)).not.toBeNull();
+    expect(store.getHouseholdById(household.id)).not.toBeNull();
+    expect(store.isMember(household.id, joiner.id)).toBe(true);
+  });
+
+  it('deleting a plain (non-owner) member only removes their membership, not the household', () => {
+    const owner = store.createUser({ email: 'delete-member-owner@example.com', passwordHash: 'hash' });
+    const joiner = store.createUser({ email: 'delete-member-joiner@example.com', passwordHash: 'hash' });
+    const household = store.createHousehold({ name: '世帯', ownerId: owner.id });
+    store.joinHouseholdByInviteCode({ inviteCode: household.inviteCode, userId: joiner.id });
+
+    store.deleteUser(joiner.id);
+
+    expect(store.findUserById(joiner.id)).toBeNull();
+    expect(store.getHouseholdById(household.id)).not.toBeNull();
+    expect(store.isMember(household.id, owner.id)).toBe(true);
+  });
+
+  it('deleting an owner who has already transferred ownership succeeds and only drops their membership', () => {
+    const owner = store.createUser({ email: 'delete-transferred-owner@example.com', passwordHash: 'hash' });
+    const joiner = store.createUser({ email: 'delete-transferred-joiner@example.com', passwordHash: 'hash' });
+    const household = store.createHousehold({ name: '世帯', ownerId: owner.id });
+    store.joinHouseholdByInviteCode({ inviteCode: household.inviteCode, userId: joiner.id });
+    store.transferOwnership({ householdId: household.id, currentOwnerId: owner.id, newOwnerId: joiner.id });
+
+    store.deleteUser(owner.id);
+
+    expect(store.findUserById(owner.id)).toBeNull();
+    expect(store.getHouseholdById(household.id)).not.toBeNull();
+    expect(store.getMemberRole(household.id, joiner.id)).toBe('owner');
+  });
+
+  it('throws for an unknown user id', () => {
+    expect(() => store.deleteUser('nobody')).toThrow('USER_NOT_FOUND');
+  });
+});
+
 describe('household data sync', () => {
   it('returns null before any data has been pushed', () => {
     const owner = store.createUser({ email: 'sync-owner@example.com', passwordHash: 'hash' });

@@ -48,7 +48,8 @@ test.describe('family sharing: view-only (viewer) role', () => {
     // someone else joins, so reload to pick up the new member first.
     await pageA.reload();
     await pageA.getByRole('button', { name: '設定', exact: true }).click();
-    await expect(pageA.getByText(`viewer-${suffix}@example.com`)).toBeVisible();
+    // Appears both in the member row and in the owner-transfer select's options.
+    await expect(pageA.getByText(`viewer-${suffix}@example.com`).first()).toBeVisible();
     await pageA.getByRole('button', { name: '閲覧のみ' }).click();
 
     // The member sees the read-only notice and loses the add-menu entry point.
