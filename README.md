@@ -17,7 +17,7 @@ View your app in AI Studio: https://ai.studio/apps/3483c948-33d1-401c-9131-7ef50
    `npm install`
 
    Styling is compiled at build time with Tailwind CSS (`tailwind.config.js` / `postcss.config.js` / `index.css`) rather than loaded from a CDN, so the app has no external runtime dependency for its UI framework and renders identically offline or in network-restricted CI.
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key. Only needed for the AI drug-interaction check (設定 → 飲み合わせチェック) — お薬手帳スキャン (photo scan) runs entirely client-side via Tesseract.js OCR and doesn't call Gemini or need this key.
 3. (Optional, for the "服薬時間になったらプッシュ通知" reminder) Set `VITE_PUSH_SERVER_URL` in `.env.local` to point at the push server below. Defaults to `http://localhost:8787`.
 4. Run the app:
    `npm run dev`
