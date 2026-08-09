@@ -37,6 +37,48 @@ test.describe('accessibility @a11y', () => {
     expect(violations, formatViolations(violations)).toEqual([]);
   });
 
+  test('the settings screen with the owner-transfer control (multi-member household) has no detectable a11y violations', async ({ browser }) => {
+    const suffix = Date.now();
+    const ctxOwner = await browser.newContext();
+    const ctxMember = await browser.newContext();
+    await ctxOwner.addInitScript(() => window.localStorage.setItem('onboardingCompleted', 'true'));
+    await ctxMember.addInitScript(() => window.localStorage.setItem('onboardingCompleted', 'true'));
+    const pageOwner = await ctxOwner.newPage();
+    const pageMember = await ctxMember.newPage();
+
+    await pageOwner.goto('/');
+    await pageMember.goto('/');
+    await pageOwner.getByRole('button', { name: '設定', exact: true }).click();
+    await pageMember.getByRole('button', { name: '設定', exact: true }).click();
+
+    await pageOwner.getByRole('button', { name: '新規登録' }).click();
+    await pageOwner.getByPlaceholder('メールアドレス').fill(`a11y-owner-${suffix}@example.com`);
+    await pageOwner.getByPlaceholder('パスワード(8文字以上)').fill('password123');
+    await pageOwner.getByRole('button', { name: 'アカウントを作成する' }).click();
+    await pageOwner.getByPlaceholder('例: 田中家').fill('a11yテスト家族');
+    await pageOwner.getByRole('button', { name: '作成', exact: true }).click();
+    const inviteText = await pageOwner.getByText(/招待コード:/).innerText();
+    const inviteCode = inviteText.match(/[0-9A-F]{8}/)?.[0];
+
+    await pageMember.getByRole('button', { name: '新規登録' }).click();
+    await pageMember.getByPlaceholder('メールアドレス').fill(`a11y-member-${suffix}@example.com`);
+    await pageMember.getByPlaceholder('パスワード(8文字以上)').fill('password123');
+    await pageMember.getByRole('button', { name: 'アカウントを作成する' }).click();
+    await pageMember.getByPlaceholder('招待コード').fill(inviteCode!);
+    await pageMember.getByRole('button', { name: '参加', exact: true }).click();
+    await expect(pageMember.getByText('a11yテスト家族')).toBeVisible();
+
+    await pageOwner.reload();
+    await pageOwner.getByRole('button', { name: '設定', exact: true }).click();
+    await expect(pageOwner.getByLabel('移譲先のメンバー')).toBeVisible();
+
+    const violations = await scan(pageOwner);
+    expect(violations, formatViolations(violations)).toEqual([]);
+
+    await ctxOwner.close();
+    await ctxMember.close();
+  });
+
   test('report setup view has no detectable a11y violations', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: '設定', exact: true }).click();
@@ -101,6 +143,20 @@ test.describe('accessibility @a11y', () => {
     expect(violations, formatViolations(violations)).toEqual([]);
   });
 
+  test('the vitals tracking screen with a recorded reading (chart + list row) has no detectable a11y violations', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: '設定', exact: true }).click();
+    await page.getByText('バイタル記録').click();
+    await page.getByRole('button', { name: /記録を追加/ }).click();
+    await page.getByRole('button', { name: '体重', exact: true }).click();
+    await page.getByLabel('体重(kg)').fill('62.5');
+    await page.getByRole('button', { name: '記録する' }).click();
+    await expect(page.getByRole('button', { name: 'この記録を削除' })).toBeVisible();
+
+    const violations = await scan(page);
+    expect(violations, formatViolations(violations)).toEqual([]);
+  });
+
   test('the allergy/medical history screen has no detectable a11y violations', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: '設定', exact: true }).click();
@@ -122,6 +178,20 @@ test.describe('accessibility @a11y', () => {
     expect(violations, formatViolations(violations)).toEqual([]);
   });
 
+  test('the allergy/medical history screen with a recorded entry (severity badge + edit/delete buttons) has no detectable a11y violations', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: '設定', exact: true }).click();
+    await page.getByText('アレルギー・既往歴').click();
+    await page.getByRole('button', { name: 'アレルギーを追加' }).click();
+    await page.getByLabel('アレルギーの原因').fill('ペニシリン');
+    await page.getByRole('button', { name: '重度' }).click();
+    await page.getByRole('button', { name: '保存する' }).click();
+    await expect(page.getByText('ペニシリン')).toBeVisible();
+
+    const violations = await scan(page);
+    expect(violations, formatViolations(violations)).toEqual([]);
+  });
+
   test('the pharmacy/hospital contacts screen has no detectable a11y violations', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: '設定', exact: true }).click();
@@ -138,6 +208,36 @@ test.describe('accessibility @a11y', () => {
     await page.getByText('レポート作成').click();
     await page.getByText('レポートを生成する').click();
     await expect(page.getByRole('heading', { name: 'Report' })).toBeVisible();
+
+    const violations = await scan(page);
+    expect(violations, formatViolations(violations)).toEqual([]);
+  });
+
+  test('the report preview screen with vitals/allergy/contacts data (charts + populated sections) has no detectable a11y violations', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: '設定', exact: true }).click();
+
+    await page.getByText('バイタル記録').click();
+    await page.getByRole('button', { name: /記録を追加/ }).click();
+    await page.getByRole('button', { name: '体重', exact: true }).click();
+    await page.getByLabel('体重(kg)').fill('62.5');
+    await page.getByRole('button', { name: '記録する' }).click();
+    await page.getByRole('button', { name: '戻る' }).click();
+
+    await page.getByText('アレルギー・既往歴').click();
+    await page.getByRole('button', { name: 'アレルギーを追加' }).click();
+    await page.getByLabel('アレルギーの原因').fill('ペニシリン');
+    await page.getByRole('button', { name: '保存する' }).click();
+    await page.getByRole('button', { name: '戻る' }).click();
+
+    await page.getByText('薬局・病院の連絡先').click();
+    await page.getByLabel('薬局名').fill('さくら薬局');
+    await page.getByRole('button', { name: '保存する' }).click();
+
+    await page.getByText('レポート作成').click();
+    await page.getByText('レポートを生成する').click();
+    await expect(page.getByRole('heading', { name: 'Report' })).toBeVisible();
+    await expect(page.getByText(/最新: 62\.5 kg/)).toBeVisible();
 
     const violations = await scan(page);
     expect(violations, formatViolations(violations)).toEqual([]);

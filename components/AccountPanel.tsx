@@ -191,7 +191,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
                 <div key={m.userId} className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-900 rounded-xl">
                   <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{m.email}</span>
                   {isOwner ? (
-                    <span className="text-[9px] font-black text-blue-500 uppercase">オーナー</span>
+                    <span className="text-[9px] font-black text-blue-700 dark:text-blue-400 uppercase">オーナー</span>
                   ) : canManage ? (
                     <div className="flex bg-white dark:bg-slate-800 rounded-full p-0.5 border border-slate-100 dark:border-slate-700">
                       <button
@@ -199,7 +199,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
                         disabled={busy}
                         onClick={() => withBusy(() => onUpdateMemberRole(m.userId, 'editor'))}
                         aria-pressed={m.role === 'editor'}
-                        className={`px-2.5 py-1 rounded-full text-[9px] font-black transition-colors ${m.role === 'editor' ? 'bg-emerald-600 text-white' : 'text-slate-600 dark:text-slate-500'}`}
+                        className={`px-2.5 py-1 rounded-full text-[9px] font-black transition-colors ${m.role === 'editor' ? 'bg-emerald-700 text-white' : 'text-slate-600 dark:text-slate-500'}`}
                       >
                         編集者
                       </button>
@@ -208,13 +208,13 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
                         disabled={busy}
                         onClick={() => withBusy(() => onUpdateMemberRole(m.userId, 'viewer'))}
                         aria-pressed={m.role === 'viewer'}
-                        className={`px-2.5 py-1 rounded-full text-[9px] font-black transition-colors ${m.role === 'viewer' ? 'bg-amber-500 text-white' : 'text-slate-600 dark:text-slate-500'}`}
+                        className={`px-2.5 py-1 rounded-full text-[9px] font-black transition-colors ${m.role === 'viewer' ? 'bg-amber-700 text-white' : 'text-slate-600 dark:text-slate-500'}`}
                       >
                         閲覧のみ
                       </button>
                     </div>
                   ) : (
-                    <span className={`text-[9px] font-black uppercase ${m.role === 'viewer' ? 'text-amber-500' : 'text-slate-600 dark:text-slate-500'}`}>
+                    <span className={`text-[9px] font-black uppercase ${m.role === 'viewer' ? 'text-amber-700 dark:text-amber-400' : 'text-slate-600 dark:text-slate-500'}`}>
                       {m.role === 'viewer' ? '閲覧のみ' : '編集者'}
                     </span>
                   )}
@@ -276,7 +276,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
                   className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900 rounded-xl text-left"
                 >
                   <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{h.name}</span>
-                  <span className="text-[10px] font-black text-blue-500">選択する</span>
+                  <span className="text-[10px] font-black text-blue-700 dark:text-blue-400">選択する</span>
                 </button>
               ))}
             </div>

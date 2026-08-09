@@ -17,6 +17,22 @@ test.describe('IndexedDB persistence', () => {
 
     await page.reload();
 
+    // If the real wall-clock time happens to be past 07:30 today, reloading
+    // with the reminder enabled triggers the reminder overlay (same check as
+    // ReminderOverlay/App.tsx use for a real reminder) — dismiss it first so
+    // it doesn't block the settings-button click below. waitFor (not a plain
+    // isVisible check) since the overlay can mount a beat after reload.
+    const reminderOverlay = page.getByRole('dialog', { name: '服薬確認が必要です' });
+    const overlayShown = await reminderOverlay
+      .waitFor({ state: 'visible', timeout: 2000 })
+      .then(() => true)
+      .catch(() => false);
+    if (overlayShown) {
+      await page.getByText('お薬を飲みました').click();
+      await page.getByRole('button', { name: 'アプリをはじめる' }).click();
+      await expect(reminderOverlay).not.toBeVisible();
+    }
+
     await page.getByRole('button', { name: '設定', exact: true }).click();
     await expect(page.getByRole('switch', { name: '強制リマインド' })).toHaveAttribute('aria-checked', 'true');
     await expect(page.locator('input[type="time"]')).toHaveValue('07:30');
