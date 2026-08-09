@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { LogIn, UserPlus, LogOut, Users, Copy, Check, Loader2, RefreshCw, AlertTriangle, Eye } from 'lucide-react';
+import { LogIn, UserPlus, LogOut, Users, Copy, Check, Loader2, RefreshCw, AlertTriangle, Eye, ShieldAlert, Trash2 } from 'lucide-react';
 import { StoredAuth } from '../utils/auth';
 import { Household, HouseholdMember } from '../utils/household';
+import { DeleteAccountModal } from './DeleteAccountModal';
 
 type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
 
@@ -20,6 +21,8 @@ interface AccountPanelProps {
   onSelectHousehold: (id: string) => void;
   onLeaveHousehold: () => Promise<void>;
   onUpdateMemberRole: (userId: string, role: 'editor' | 'viewer') => Promise<void>;
+  onTransferOwnership: (userId: string) => Promise<void>;
+  onDeleteAccount: (password: string) => Promise<void>;
 }
 
 const SYNC_LABEL: Record<SyncStatus, string> = {
@@ -44,6 +47,8 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
   onSelectHousehold,
   onLeaveHousehold,
   onUpdateMemberRole,
+  onTransferOwnership,
+  onDeleteAccount,
 }) => {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
@@ -53,6 +58,8 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [transferTargetId, setTransferTargetId] = useState('');
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   const activeHousehold = households.find(h => h.id === activeHouseholdId) || null;
 
@@ -216,6 +223,37 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
             })}
           </div>
 
+          {auth.user.id === activeHousehold.ownerId && members.length > 1 && (
+            <div className="space-y-2 pt-2 border-t border-slate-50 dark:border-slate-800">
+              <p className="text-[10px] font-black text-slate-600 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                <ShieldAlert size={12} /> オーナー権限を移譲
+              </p>
+              <div className="flex gap-2">
+                <select
+                  aria-label="移譲先のメンバー"
+                  value={transferTargetId}
+                  onChange={e => setTransferTargetId(e.target.value)}
+                  className="flex-1 bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none"
+                >
+                  <option value="">メンバーを選択...</option>
+                  {members.filter(m => m.userId !== activeHousehold.ownerId).map(m => (
+                    <option key={m.userId} value={m.userId}>{m.email}</option>
+                  ))}
+                </select>
+                <button
+                  disabled={busy || !transferTargetId}
+                  onClick={() => {
+                    if (!window.confirm('オーナー権限を移譲しますか？あなたは編集者になります。')) return;
+                    withBusy(async () => { await onTransferOwnership(transferTargetId); setTransferTargetId(''); });
+                  }}
+                  className="px-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-black text-xs disabled:opacity-50"
+                >
+                  移譲
+                </button>
+              </div>
+            </div>
+          )}
+
           {error && <p className="text-xs font-bold text-red-600">{error}</p>}
 
           <button
@@ -284,6 +322,22 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
 
           {error && <p className="text-xs font-bold text-red-600">{error}</p>}
         </div>
+      )}
+
+      <div className="pt-2 border-t border-slate-50 dark:border-slate-800">
+        <button
+          onClick={() => setShowDeleteAccount(true)}
+          className="w-full py-3 text-red-600 font-bold text-xs flex items-center justify-center gap-1.5"
+        >
+          <Trash2 size={14} /> アカウントを削除
+        </button>
+      </div>
+
+      {showDeleteAccount && (
+        <DeleteAccountModal
+          onConfirm={onDeleteAccount}
+          onClose={() => setShowDeleteAccount(false)}
+        />
       )}
     </div>
   );

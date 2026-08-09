@@ -8,15 +8,18 @@ import { ScanReviewModal } from './components/ScanReviewModal';
 import { QuickLogSheet } from './components/QuickLogSheet';
 import { InteractionCheckModal } from './components/InteractionCheckModal';
 import { AccountPanel } from './components/AccountPanel';
-import { Medication, MedicationLog, ViewMode, DailyCondition, GlobalActionLog, ReportConfig, ReminderSettings } from './types';
+import { Medication, MedicationLog, ViewMode, DailyCondition, GlobalActionLog, ReportConfig, ReminderSettings, VitalRecord, MedicalRecord, MedicalContacts } from './types';
 import { UNITS, LABELS } from './constants';
 import { HomeView } from './features/home/HomeView';
 import { MedicationListView } from './features/meds/MedicationListView';
 import { ReportSetupView } from './features/report/ReportSetupView';
 import { ReportPreviewView } from './features/report/ReportPreviewView';
+import { VitalsView } from './features/vitals/VitalsView';
+import { MedicalHistoryView } from './features/medicalHistory/MedicalHistoryView';
+import { MedicalContactsView } from './features/medicalContacts/MedicalContactsView';
 import { ReminderOverlay } from './components/ReminderOverlay';
 import { OnboardingOverlay } from './components/OnboardingOverlay';
-import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload, ShieldAlert, Moon, Sun, HelpCircle } from 'lucide-react';
+import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload, ShieldAlert, Moon, Sun, HelpCircle, Activity, Syringe, Phone } from 'lucide-react';
 import { recognizeImages } from './utils/ocrRecognize';
 import { parseOcrTextToMedication } from './utils/ocrParse';
 import { markMedicationTaken } from './utils/medicationActions';
@@ -26,13 +29,16 @@ import { getAllLogs } from './db/logs';
 import { getAllConditions } from './db/conditions';
 import { getAllGlobalLogs } from './db/globalLogs';
 import { getReminderSettings, saveReminderSettings } from './db/settings';
-import { replaceAllMedications, replaceAllLogs, replaceAllConditions, replaceAllGlobalLogs, resetAllData } from './db/bulk';
+import { getAllVitals } from './db/vitals';
+import { getAllMedicalRecords } from './db/medicalRecords';
+import { getMedicalContacts, saveMedicalContacts } from './db/contacts';
+import { replaceAllMedications, replaceAllLogs, replaceAllConditions, replaceAllGlobalLogs, replaceAllVitals, replaceAllMedicalRecords, resetAllData } from './db/bulk';
 import { drainPendingActions, PendingAction } from './utils/pendingActionsDb';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, PushReminder } from './utils/push';
 import { useI18n } from './i18n';
 import { buildBackup, downloadBackup, parseBackupFile } from './utils/backup';
 import { Theme, getStoredTheme, applyTheme } from './utils/theme';
-import { StoredAuth, getStoredAuth, clearStoredAuth, login as apiLogin, register as apiRegister } from './utils/auth';
+import { StoredAuth, getStoredAuth, clearStoredAuth, login as apiLogin, register as apiRegister, deleteAccount as apiDeleteAccount } from './utils/auth';
 import {
   Household,
   HouseholdMember,
@@ -44,6 +50,7 @@ import {
   fetchHouseholdData,
   pushHouseholdData,
   updateMemberRole as apiUpdateMemberRole,
+  transferOwnership as apiTransferOwnership,
   connectHouseholdSocket,
 } from './utils/household';
 
@@ -54,7 +61,10 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<MedicationLog[]>([]);
   const [globalLogs, setGlobalLogs] = useState<GlobalActionLog[]>([]);
   const [conditions, setConditions] = useState<DailyCondition[]>([]);
-  
+  const [vitals, setVitals] = useState<VitalRecord[]>([]);
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
+  const [medicalContacts, setMedicalContacts] = useState<MedicalContacts>({});
+
   const [reminderSettings, setReminderSettings] = useState<ReminderSettings>({
     enabled: false,
     time: '08:00',
@@ -69,7 +79,10 @@ const App: React.FC = () => {
     end: format(new Date(), 'yyyy-MM-dd'),
     includeMeds: true,
     includeCondition: true,
-    includeHistory: true
+    includeHistory: true,
+    includeVitals: true,
+    includeAllergies: true,
+    includeContacts: true
   });
 
   const [editingMed, setEditingMed] = useState<Medication | null>(null);
@@ -83,6 +96,9 @@ const App: React.FC = () => {
   const [pushStatus, setPushStatus] = useState<string | null>(null);
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [showInteractionCheck, setShowInteractionCheck] = useState(false);
+  const [showVitals, setShowVitals] = useState(false);
+  const [showMedicalHistory, setShowMedicalHistory] = useState(false);
+  const [showMedicalContacts, setShowMedicalContacts] = useState(false);
   const [theme, setTheme] = useState<Theme>(getStoredTheme);
 
   const toggleTheme = () => {
@@ -114,12 +130,15 @@ const App: React.FC = () => {
   const suppressNextPushRef = useRef(false);
   const initialSyncDoneRef = useRef(false);
 
-  const applyRemoteData = (data: { medications: Medication[]; logs: MedicationLog[]; globalLogs: GlobalActionLog[]; conditions: DailyCondition[] }) => {
+  const applyRemoteData = (data: { medications: Medication[]; logs: MedicationLog[]; globalLogs: GlobalActionLog[]; conditions: DailyCondition[]; vitals: VitalRecord[]; medicalRecords: MedicalRecord[]; medicalContacts: MedicalContacts }) => {
     suppressNextPushRef.current = true;
     setMedications(data.medications || []);
     setLogs(data.logs || []);
     setGlobalLogs(data.globalLogs || []);
     setConditions(data.conditions || []);
+    setVitals(data.vitals || []);
+    setMedicalRecords(data.medicalRecords || []);
+    setMedicalContacts(data.medicalContacts || {});
   };
 
   const refreshHouseholds = useCallback(async (currentAuth: StoredAuth) => {
@@ -160,7 +179,7 @@ const App: React.FC = () => {
         if (updatedAt && data) {
           applyRemoteData(data);
         } else if (!isViewer) {
-          await pushHouseholdData(auth.token, activeHouseholdId, { medications, logs, globalLogs, conditions });
+          await pushHouseholdData(auth.token, activeHouseholdId, { medications, logs, globalLogs, conditions, vitals, medicalRecords, medicalContacts });
         }
         if (!cancelled) { setSyncStatus('synced'); setSyncError(null); }
       } catch (e) {
@@ -192,13 +211,13 @@ const App: React.FC = () => {
 
     const timer = setTimeout(() => {
       setSyncStatus('syncing');
-      pushHouseholdData(auth.token, activeHouseholdId, { medications, logs, globalLogs, conditions })
+      pushHouseholdData(auth.token, activeHouseholdId, { medications, logs, globalLogs, conditions, vitals, medicalRecords, medicalContacts })
         .then(() => { setSyncStatus('synced'); setSyncError(null); })
         .catch(e => { setSyncStatus('error'); setSyncError(e instanceof Error ? e.message : '同期に失敗しました'); });
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [medications, logs, globalLogs, conditions, settingsLoaded, auth, activeHouseholdId, isViewer]);
+  }, [medications, logs, globalLogs, conditions, vitals, medicalRecords, medicalContacts, settingsLoaded, auth, activeHouseholdId, isViewer]);
 
   const handleLogin = async (email: string, password: string) => { setAuth(await apiLogin(email, password)); };
   const handleRegister = async (email: string, password: string) => { setAuth(await apiRegister(email, password)); };
@@ -236,6 +255,25 @@ const App: React.FC = () => {
     setHouseholdMembers(members);
   };
 
+  const handleTransferOwnership = async (newOwnerId: string) => {
+    if (!auth || !activeHouseholdId) return;
+    const { members } = await apiTransferOwnership(auth.token, activeHouseholdId, newOwnerId);
+    setHouseholdMembers(members);
+    await refreshHouseholds(auth);
+  };
+
+  // Deletes the account server-side, then behaves like handleLogout locally.
+  // Device-local IndexedDB data is intentionally left alone — the app supports
+  // fully local (accountless) use, so "delete my account" doesn't mean "wipe
+  // this device's medication records."
+  const handleDeleteAccount = async (password: string) => {
+    if (!auth) return;
+    await apiDeleteAccount(auth.token, password);
+    clearStoredAuth();
+    setAuth(null);
+    setActiveHouseholdId(null);
+  };
+
   // Keeps the pending-action drain logic (which can fire from a service worker
   // "message" event at any time) reading fresh state instead of a stale closure.
   const stateRef = useRef({ logs, medications });
@@ -246,12 +284,15 @@ const App: React.FC = () => {
     (async () => {
       try {
         await migrateFromLocalStorage();
-        const [meds, ls, gLogs, conds, settings] = await Promise.all([
+        const [meds, ls, gLogs, conds, settings, vits, medRecs, contacts] = await Promise.all([
           getAllMedications(),
           getAllLogs(),
           getAllGlobalLogs(),
           getAllConditions(),
           getReminderSettings(),
+          getAllVitals(),
+          getAllMedicalRecords(),
+          getMedicalContacts(),
         ]);
         if (cancelled) return;
         setMedications(meds);
@@ -259,6 +300,9 @@ const App: React.FC = () => {
         setGlobalLogs(gLogs);
         setConditions(conds);
         setReminderSettings(settings);
+        setVitals(vits);
+        setMedicalRecords(medRecs);
+        setMedicalContacts(contacts);
 
         // Check if we should show the reminder overlay
         const today = format(new Date(), 'yyyy-MM-dd');
@@ -296,12 +340,34 @@ const App: React.FC = () => {
       replaceAllGlobalLogs(globalLogs),
       replaceAllConditions(conditions),
       saveReminderSettings(reminderSettings),
+      replaceAllVitals(vitals),
+      replaceAllMedicalRecords(medicalRecords),
+      saveMedicalContacts(medicalContacts),
     ]).catch(e => console.error("Failed to persist data", e));
-  }, [medications, logs, globalLogs, conditions, reminderSettings, settingsLoaded]);
+  }, [medications, logs, globalLogs, conditions, reminderSettings, vitals, medicalRecords, medicalContacts, settingsLoaded]);
 
   const addGlobalLog = (type: GlobalActionLog['type'], title: string, details?: string) => {
     const newLog: GlobalActionLog = { id: crypto.randomUUID(), timestamp: Date.now(), type, title, details };
     setGlobalLogs(prev => [newLog, ...prev].slice(0, 100));
+  };
+
+  const handleSaveVital = (record: VitalRecord) => {
+    setVitals(prev => [...prev, record]);
+  };
+
+  const handleDeleteVital = (id: string) => {
+    setVitals(prev => prev.filter(v => v.id !== id));
+  };
+
+  const handleSaveMedicalRecord = (record: MedicalRecord) => {
+    setMedicalRecords(prev => {
+      const exists = prev.some(r => r.id === record.id);
+      return exists ? prev.map(r => (r.id === record.id ? record : r)) : [...prev, record];
+    });
+  };
+
+  const handleDeleteMedicalRecord = (id: string) => {
+    setMedicalRecords(prev => prev.filter(r => r.id !== id));
   };
 
   // Applies "take" actions recorded outside the app (notification tap, quick-record
@@ -410,7 +476,7 @@ const App: React.FC = () => {
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const handleExportBackup = () => {
-    const backup = buildBackup({ medications, logs, globalLogs, conditions, reminderSettings });
+    const backup = buildBackup({ medications, logs, globalLogs, conditions, reminderSettings, vitals, medicalRecords, medicalContacts });
     downloadBackup(backup);
   };
 
@@ -427,6 +493,9 @@ const App: React.FC = () => {
       setGlobalLogs(backup.globalLogs);
       setConditions(backup.conditions);
       setReminderSettings(backup.reminderSettings);
+      setVitals(backup.vitals);
+      setMedicalRecords(backup.medicalRecords);
+      setMedicalContacts(backup.medicalContacts);
       alert('データを復元しました');
     } catch (err) {
       alert(err instanceof Error ? err.message : 'インポートに失敗しました');
@@ -540,12 +609,15 @@ const App: React.FC = () => {
           />
         )}
         {view === 'report' && (
-          <ReportPreviewView 
-            config={reportConfig} 
-            medications={medications} 
-            logs={logs} 
+          <ReportPreviewView
+            config={reportConfig}
+            medications={medications}
+            logs={logs}
             conditions={conditions}
             globalLogs={globalLogs}
+            vitals={vitals}
+            medicalRecords={medicalRecords}
+            medicalContacts={medicalContacts}
             onBack={() => setView('report-setup')}
           />
         )}
@@ -656,7 +728,33 @@ const App: React.FC = () => {
                 onSelectHousehold={setActiveHouseholdId}
                 onLeaveHousehold={handleLeaveHousehold}
                 onUpdateMemberRole={handleUpdateMemberRole}
+                onTransferOwnership={handleTransferOwnership}
+                onDeleteAccount={handleDeleteAccount}
               />
+
+              <button onClick={() => setShowVitals(true)} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-red-50 dark:bg-red-500/10 text-red-600 rounded-2xl flex items-center justify-center"><Activity size={24}/></div>
+                  <div className="text-left"><p className="text-lg">{t.settings.vitalsRecord}</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">{t.settings.vitalsRecordDesc}</p></div>
+                </div>
+                <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
+              </button>
+
+              <button onClick={() => setShowMedicalHistory(true)} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-orange-50 dark:bg-orange-500/10 text-orange-600 rounded-2xl flex items-center justify-center"><Syringe size={24}/></div>
+                  <div className="text-left"><p className="text-lg">{t.settings.medicalHistory}</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">{t.settings.medicalHistoryDesc}</p></div>
+                </div>
+                <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
+              </button>
+
+              <button onClick={() => setShowMedicalContacts(true)} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center"><Phone size={24}/></div>
+                  <div className="text-left"><p className="text-lg">{t.settings.medicalContacts}</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">{t.settings.medicalContactsDesc}</p></div>
+                </div>
+                <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
+              </button>
 
               <button onClick={() => setView('report-setup')} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
                 <div className="flex items-center gap-4">
@@ -736,6 +834,35 @@ const App: React.FC = () => {
 
       {showInteractionCheck && (
         <InteractionCheckModal medications={medications} onClose={() => setShowInteractionCheck(false)} />
+      )}
+
+      {showVitals && (
+        <VitalsView
+          vitals={vitals}
+          onSave={handleSaveVital}
+          onDelete={handleDeleteVital}
+          onClose={() => setShowVitals(false)}
+          readOnly={isViewer}
+        />
+      )}
+
+      {showMedicalHistory && (
+        <MedicalHistoryView
+          records={medicalRecords}
+          onSave={handleSaveMedicalRecord}
+          onDelete={handleDeleteMedicalRecord}
+          onClose={() => setShowMedicalHistory(false)}
+          readOnly={isViewer}
+        />
+      )}
+
+      {showMedicalContacts && (
+        <MedicalContactsView
+          contacts={medicalContacts}
+          onSave={setMedicalContacts}
+          onClose={() => setShowMedicalContacts(false)}
+          readOnly={isViewer}
+        />
       )}
 
       {showQuickLog && (

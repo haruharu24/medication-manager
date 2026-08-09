@@ -1,6 +1,11 @@
 const API_BASE = (import.meta as any).env?.VITE_PUSH_SERVER_URL || 'http://localhost:8787';
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  // Carries any extra JSON fields the server sent alongside `error` (e.g. the
+  // {code, households} payload on a blocked account-deletion response), so
+  // callers that need more than a message can still get at it.
+  data?: Record<string, unknown>;
+}
 
 export const apiRequest = async <T = any>(
   path: string,
@@ -17,7 +22,9 @@ export const apiRequest = async <T = any>(
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new ApiError(json.error || `リクエストに失敗しました(${res.status})`);
+    const err = new ApiError(json.error || `リクエストに失敗しました(${res.status})`);
+    err.data = json;
+    throw err;
   }
   return json as T;
 };

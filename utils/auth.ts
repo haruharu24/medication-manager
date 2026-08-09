@@ -35,3 +35,11 @@ export const login = async (email: string, password: string): Promise<StoredAuth
   storeAuth(auth);
   return auth;
 };
+
+// Throws ApiError with data.code === 'OWNER_MUST_TRANSFER_OWNERSHIP' and
+// data.households when the account owns a household that has other members —
+// the caller must transferOwnership (utils/household.ts) for each of those
+// first. Does not clear the stored auth on success; callers should do that
+// themselves (mirrors how login/register don't handle logout either).
+export const deleteAccount = (token: string, password: string): Promise<{ ok: true }> =>
+  apiRequest<{ ok: true }>('/api/auth/me', { method: 'DELETE', token, body: { password } });

@@ -1,5 +1,5 @@
 import { apiRequest, getWsUrl } from './api';
-import { Medication, MedicationLog, GlobalActionLog, DailyCondition } from '../types';
+import { Medication, MedicationLog, GlobalActionLog, DailyCondition, VitalRecord, MedicalRecord, MedicalContacts } from '../types';
 
 export interface Household {
   id: string;
@@ -25,6 +25,9 @@ export interface SyncedData {
   logs: MedicationLog[];
   globalLogs: GlobalActionLog[];
   conditions: DailyCondition[];
+  vitals: VitalRecord[];
+  medicalRecords: MedicalRecord[];
+  medicalContacts: MedicalContacts;
 }
 
 export const fetchMe = (token: string) =>
@@ -47,6 +50,13 @@ export const updateMemberRole = (token: string, householdId: string, userId: str
     method: 'POST',
     token,
     body: { role },
+  });
+
+export const transferOwnership = (token: string, householdId: string, newOwnerId: string) =>
+  apiRequest<{ members: HouseholdMember[] }>(`/api/households/${householdId}/transfer-ownership`, {
+    method: 'POST',
+    token,
+    body: { newOwnerId },
   });
 
 export const fetchHouseholdData = (token: string, householdId: string) =>

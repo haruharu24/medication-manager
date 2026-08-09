@@ -39,7 +39,7 @@ npm run test:all      # test + test:e2e をまとめて実行
 - `i18n/translations.ts` に `ja`/`en` の辞書、`i18n/index.tsx` に `I18nProvider`/`useI18n()` がある。`en` は `typeof ja` で型付けされているので、`ja` にキーを追加すると `en` 側の対応漏れは型エラーになる。
 - 画面に文字列を追加するときは `const { t } = useI18n();` として `t.<namespace>.<key>` を参照する形にすること(直接日本語をJSXに書かない)。`useI18n()` はプロバイダーの外でも安全に使える(未ラップ時は日本語のデフォルト値を返すのでコンポーネント単体テストは今まで通り書ける)。
 - 言語の切り替えUIは設定画面(`App.tsx`)にあり、選択は `localStorage.language` に永続化される。
-- **現状のカバレッジ境界**: ナビゲーション(`BottomNav`)、設定画面、ホーム/お薬画面のヘッダー・追加メニュー・タブ、オンボーディング(`OnboardingOverlay`)は翻訳済み。お薬の追加・編集フォーム(`MedicationForm`)、スキャン確認画面(`ScanReviewModal`)、レポート画面、家族共有パネル(`AccountPanel`)、飲み合わせチェック、カメラモーダル、日付書式(date-fnsの `locale: ja`)は未対応で日本語のまま。これらを対応する際も同じ `useI18n()` パターンで拡張すること。
+- **現状のカバレッジ境界**: ナビゲーション(`BottomNav`)、設定画面(新設のバイタル記録・アレルギー既往歴・薬局病院連絡先のナビ行を含む)、ホーム/お薬画面のヘッダー・追加メニュー・タブ、オンボーディング(`OnboardingOverlay`)は翻訳済み。お薬の追加・編集フォーム(`MedicationForm`)、スキャン確認画面(`ScanReviewModal`)、レポート画面、家族共有パネル(`AccountPanel`、アカウント削除モーダル含む)、飲み合わせチェック、カメラモーダル、バイタル/アレルギー既往歴/薬局連絡先の各画面本体、日付書式(date-fnsの `locale: ja`)は未対応で日本語のまま。これらを対応する際も同じ `useI18n()` パターンで拡張すること。
 - E2Eテストで言語切り替え後の画面を検証する際、Playwrightのデフォルトプロジェクト設定はオンボーディング表示を無効化する `storageState`(`e2e/fixtures/onboarding-completed.json`)を使っている点に注意。
 
 ## 世帯メンバーの権限(owner/editor/viewer)
@@ -56,8 +56,8 @@ npm run test:all      # test + test:e2e をまとめて実行
 
 ## データ永続化(IndexedDB)
 
-- お薬・服薬記録・体調記録・履歴・リマインダー設定(`medications`/`logs`/`conditions`/`globalLogs`/`reminderSettings`)は `idb` パッケージ経由のIndexedDB(DB名 `medication-manager`, `db/database.ts` で定義)に永続化する。ストアごとのCRUDは `db/medications.ts` / `db/logs.ts` / `db/conditions.ts` / `db/globalLogs.ts` / `db/settings.ts` に分かれている。
-- `App.tsx` はこれらをReact stateとして持ち、現在の配列を丸ごとストアに書き戻す方式(`db/bulk.ts` の `replaceAllMedications` 等でclear+bulk put)を使っている。個々のadd/update/deleteのたびに1件ずつCRUD関数を呼ぶのではなく、既存の15機能(家族共有・グループ作成・AIスキャン確認・通知など)がすべて `setMedications` 等のReact state経由でしか状態を触らない前提を崩さないための設計。新しい機能を追加する際もこのパターンを踏襲し、state更新はReactの `setXxx` を使い、IndexedDBへの書き込みは既存のpersist effect(`App.tsx`)に任せること。
+- お薬・服薬記録・体調記録・履歴・リマインダー設定・バイタル記録・アレルギー既往歴(`medications`/`logs`/`conditions`/`globalLogs`/`reminderSettings`/`vitals`/`medicalRecords`)は `idb` パッケージ経由のIndexedDB(DB名 `medication-manager`, `db/database.ts` で定義, 現在 `DB_VERSION = 2`)に永続化する。薬局・病院の連絡先(`medicalContacts`)は単一オブジェクトなので専用ストアを作らず `reminderSettings` と同じ `settings` ストアのkey/valueパターン(`db/contacts.ts`)で保存する。ストアごとのCRUDは `db/medications.ts` / `db/logs.ts` / `db/conditions.ts` / `db/globalLogs.ts` / `db/settings.ts` / `db/vitals.ts` / `db/medicalRecords.ts` / `db/contacts.ts` に分かれている。
+- `App.tsx` はこれらをReact stateとして持ち、現在の配列を丸ごとストアに書き戻す方式(`db/bulk.ts` の `replaceAllMedications` 等でclear+bulk put)を使っている。個々のadd/update/deleteのたびに1件ずつCRUD関数を呼ぶのではなく、既存の複数機能(家族共有・グループ作成・AIスキャン確認・通知など)がすべて `setMedications` 等のReact state経由でしか状態を触らない前提を崩さないための設計。新しい機能を追加する際もこのパターンを踏襲し、state更新はReactの `setXxx` を使い、IndexedDBへの書き込みは既存のpersist effect(`App.tsx`)に任せること。新しいストアを追加する場合は `db/database.ts` の `DB_VERSION` を1つ上げ、`upgrade()` 内で `objectStoreNames.contains` ガード付きで `createObjectStore` する(既存データを壊さない安全な手順として確立済み)。
 - 初回起動時のみ `db/migration.ts` の `migrateFromLocalStorage()` が旧`localStorage`のデータをIndexedDBへ一度だけ移行する(`idb-migration-done` フラグで再実行を防止、元のlocalStorageキーは削除しない)。
 - IndexedDBが利用できない環境(Safariプライベートブラウズ等)へのフォールバックは意図的に実装していない。失敗時は`console.error`のみで、以降のUI操作は通常通り動作するが永続化されない。
 - テストは `db/__tests__/*.test.ts`(`fake-indexeddb` を使い、`testUtils.ts` の `setupFreshDB()` で各テスト前にDBをリセットする)。E2Eでの実永続化の検証は `e2e/persistence.spec.ts`(リロード後もデータが残ること、データリセットで全ストアがクリアされることを確認)。
@@ -70,6 +70,21 @@ npm run test:all      # test + test:e2e をまとめて実行
 - OEM(エンジンモード)はLSTM版(`1`)を使用。`jpn.traineddata` は `tesseract-ocr/tessdata_fast` から取得したLSTM対応データで、`gzip: false`(圧縮なしのファイルそのまま)。データとcoreファイルのLSTM対応有無が食い違うと "LSTM requested, but not present" で失敗するため、どちらかを差し替える場合は両方を揃えること。
 - `utils/ocrParse.ts` が生のOCRテキストから正規表現でお薬の項目(名前・用量・単位・タイミング)を抽出する純粋関数。1枚の写真につき1件のドラフトとして扱い、AIと違って1枚の写真に複数のお薬が写っていても自動分割はしない(`CameraModal` のヒント文言で1枚1件を推奨)。用量・タイミングの両方を検出できなかった場合のみ、生のOCRテキストをmemoに残す。
 - `ScanReviewModal` はドラフトの出所(AI/OCR)に依存しない作りなので、スキャン方式を変更してもこのコンポーネント自体は変更不要。
+
+## バイタル記録・アレルギー既往歴・薬局連絡先・レポート拡張
+
+- 設定画面から遷移する3つの独立した全画面ビュー(`features/vitals/VitalsView.tsx`、`features/medicalHistory/MedicalHistoryView.tsx`、`features/medicalContacts/MedicalContactsView.tsx`)。`view`/`ViewMode`(`BottomNav`経由のタブ遷移)は使わず、`MedicationForm`/`ScanReviewModal`と同じ「`isXxxOpen` stateで開閉するfixed inset-0のオーバーレイ」パターンを踏襲している(`BottomNav`はホーム/お薬/設定の3タブ固定でこれ以上増やしていない)。
+- バイタルは `type: 'bloodPressure'|'weight'|'temperature'|'bloodSugar'` の判別共用体(`types.ts` の `VitalRecord`)、アレルギー・既往歴は `type: 'allergy'|'history'` の判別子を持つ単一の `MedicalRecord` 型にまとめている(ストア/UIをtypeごとに分けない設計)。どちらも `id`キー・`timestamp`/`dateStr`を持ち、1日に複数件の記録を許容する(`DailyCondition`のような日付キーとは異なる)。
+- `components/TrendChart.tsx` はレポート画面にあった単系列0-10固定スケールの`ScoreChart`を汎用化したもので、複数系列(血圧の収縮期/拡張期など)・自動Y軸スケールに対応する。バイタルのグルーピング・系列構築・値のフォーマットは `utils/vitalsChart.ts` に集約されており、`VitalsView`とレポート画面(`ReportPreviewView`)の両方から参照する(重複実装を避けるため)。
+- レポート画面(`features/report/ReportSetupView.tsx`/`ReportPreviewView.tsx`)にバイタル・アレルギー既往歴・薬局連絡先のセクションを追加した。バイタルはレポートの期間で絞り込むが、アレルギー既往歴・連絡先は「現在のスナップショット」として常に全件表示する(期間フィルタなし)。あわせて、元々UIには存在したが実体が無かった「登録・更新履歴」(`includeHistory`)トグルの中身(`globalLogs`の期間内一覧)も実装した。
+- `ReportPreviewView`の見出し階層は `h1`(Report) → `h2`(各セクション) → `h3`(セクション内の項目)。新しいセクションを足す際もこの階層を維持すること(`page-has-heading-one`/`heading-order`のaxeルールで検出される)。
+- 家族同期の対象(`utils/household.ts` の `SyncedData`)・バックアップの対象(`utils/backup.ts` の `BackupData`)にも `vitals`/`medicalRecords`/`medicalContacts` を含めている。新しいデータドメインを追加する際は、`App.tsx`の読み込み/永続化effect・`SyncedData`・`BackupData`の3箇所すべてに配線を忘れないこと(`utils/backup.ts`の`parseBackupFile`は後方互換のため、これらのフィールドが無い古いバックアップファイルも読み込めるようデフォルト値で補完する)。
+
+## アカウント削除
+
+- `DELETE /api/auth/me`(`server/index.js`)はJWTだけでなくパスワードもサーバー側で再検証してから削除する(`server/accountStore.js`の`deleteUser`)。クライアント側(`components/DeleteAccountModal.tsx`)もパスワード入力に加えて「削除」という確認文字列の入力を要求する、既存の「データリセット」ボタン(`window.confirm`のみ)より一段強い確認フロー。
+- 削除しようとしているユーザーが「他のメンバーもいる世帯のオーナー」だった場合、`deleteUser`は一切書き込みを行わずに`OWNER_MUST_TRANSFER_OWNERSHIP`(該当世帯一覧付き)で失敗する。ユーザーは`POST /api/households/:id/transfer-ownership`(`AccountPanel.tsx`の「オーナー権限を移譲」UI)で先にオーナー権限を他メンバーに移譲してから削除する必要がある。オーナーが単独所有(自分のみ)の世帯は、削除時に世帯・世帯データ・メンバーシップごと削除される。
+- 削除成功後のクライアント側の挙動は`handleLogout`と同じ(`clearStoredAuth`/`setAuth(null)`/`setActiveHouseholdId(null)`)。端末内IndexedDBのお薬データは意図的に削除しない(アカウント無しでも端末内だけで使い続けられる、というこのアプリの既存方針を維持するため)。
 
 ## その他
 

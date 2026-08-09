@@ -16,6 +16,7 @@ import {
 import { hashPassword, verifyPassword, signToken, requireAuth } from './auth.js';
 import {
   findUserByEmail,
+  findUserById,
   createUser,
   getHouseholdsForUser,
   getHouseholdById,
@@ -28,6 +29,8 @@ import {
   setHouseholdData,
   getMemberRole,
   setMemberRole,
+  transferOwnership,
+  deleteUser,
 } from './accountStore.js';
 
 const PORT = process.env.PORT || 8787;
@@ -128,6 +131,26 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
   res.json({ user: req.user, households });
 });
 
+// Irreversible, so the password is re-verified server-side even though the
+// request already carries a valid JWT (the client also asks for a typed
+// confirmation before sending this, but that's a UX gate, not a security one).
+app.delete('/api/auth/me', requireAuth, async (req, res) => {
+  const { password } = req.body || {};
+  const user = findUserById(req.user.id);
+  if (!user || !password || !(await verifyPassword(password, user.passwordHash))) {
+    return res.status(401).json({ error: 'パスワードが正しくありません' });
+  }
+  try {
+    deleteUser(req.user.id);
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.message === 'OWNER_MUST_TRANSFER_OWNERSHIP') {
+      return res.status(409).json({ error: '他のメンバーがいる世帯のオーナー権限を先に移譲してください', code: e.message, households: e.households });
+    }
+    res.status(500).json({ error: 'アカウントの削除に失敗しました' });
+  }
+});
+
 app.post('/api/households', requireAuth, (req, res) => {
   const { name } = req.body || {};
   if (!name) return res.status(400).json({ error: '世帯名を入力してください' });
@@ -186,6 +209,23 @@ app.post('/api/households/:id/members/:userId/role', requireAuth, requireMembers
     if (e.message === 'NOT_A_MEMBER') return res.status(404).json({ error: 'そのメンバーは見つかりません' });
     if (e.message === 'CANNOT_CHANGE_OWNER_ROLE') return res.status(400).json({ error: 'オーナーの権限は変更できません' });
     res.status(500).json({ error: '権限の変更に失敗しました' });
+  }
+});
+
+app.post('/api/households/:id/transfer-ownership', requireAuth, requireMembership, requireOwner, (req, res) => {
+  const { newOwnerId } = req.body || {};
+  if (!newOwnerId) return res.status(400).json({ error: 'newOwnerIdを指定してください' });
+  try {
+    transferOwnership({ householdId: req.params.id, currentOwnerId: req.user.id, newOwnerId });
+    const members = getHouseholdMembers(req.params.id);
+    // Like a role change, ownership transfer should take effect immediately for
+    // every connected member (their own role display changes too).
+    broadcastToHousehold(req.params.id, { type: 'members-updated' });
+    res.json({ members });
+  } catch (e) {
+    if (e.message === 'NOT_A_MEMBER') return res.status(404).json({ error: '指定されたユーザーはこの世帯のメンバーではありません' });
+    if (e.message === 'NOT_OWNER') return res.status(403).json({ error: 'オーナーのみ操作できます' });
+    res.status(500).json({ error: 'オーナー権限の移譲に失敗しました' });
   }
 });
 

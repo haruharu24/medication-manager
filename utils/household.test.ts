@@ -15,6 +15,7 @@ import {
   fetchHouseholdData,
   pushHouseholdData,
   updateMemberRole,
+  transferOwnership,
   connectHouseholdSocket,
 } from './household';
 
@@ -56,7 +57,7 @@ describe('household API wrappers', () => {
     await leaveHousehold('tok', 'h1');
     await fetchMembers('tok', 'h1');
     await fetchHouseholdData('tok', 'h1');
-    await pushHouseholdData('tok', 'h1', { medications: [], logs: [], globalLogs: [], conditions: [] });
+    await pushHouseholdData('tok', 'h1', { medications: [], logs: [], globalLogs: [], conditions: [], vitals: [], medicalRecords: [], medicalContacts: {} });
 
     const paths = mockedApiRequest.mock.calls.map(call => call[0]);
     expect(paths).toEqual([
@@ -74,6 +75,16 @@ describe('household API wrappers', () => {
       method: 'POST',
       token: 'tok',
       body: { role: 'viewer' },
+    });
+  });
+
+  it('transferOwnership POSTs the new owner id to the transfer-ownership URL', async () => {
+    mockedApiRequest.mockResolvedValue({ members: [] });
+    await transferOwnership('tok', 'h1', 'u2');
+    expect(mockedApiRequest).toHaveBeenCalledWith('/api/households/h1/transfer-ownership', {
+      method: 'POST',
+      token: 'tok',
+      body: { newOwnerId: 'u2' },
     });
   });
 });

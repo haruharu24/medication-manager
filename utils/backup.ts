@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { Medication, MedicationLog, GlobalActionLog, DailyCondition, ReminderSettings } from '../types';
+import { Medication, MedicationLog, GlobalActionLog, DailyCondition, ReminderSettings, VitalRecord, MedicalRecord, MedicalContacts } from '../types';
 
 export const BACKUP_VERSION = 1;
 
@@ -11,6 +11,9 @@ export interface BackupData {
   globalLogs: GlobalActionLog[];
   conditions: DailyCondition[];
   reminderSettings: ReminderSettings;
+  vitals: VitalRecord[];
+  medicalRecords: MedicalRecord[];
+  medicalContacts: MedicalContacts;
 }
 
 export const buildBackup = (data: Omit<BackupData, 'version' | 'exportedAt'>): BackupData => ({
@@ -51,7 +54,15 @@ export const parseBackupFile = (file: File): Promise<BackupData> => {
           reject(new Error('バックアップファイルの形式が正しくありません'));
           return;
         }
-        resolve(parsed as BackupData);
+        // vitals/medicalRecords/medicalContacts were added after BACKUP_VERSION 1
+        // shipped, so older backup files won't have them — default instead of
+        // rejecting, so existing backups remain importable.
+        resolve({
+          ...parsed,
+          vitals: isArray(parsed.vitals) ? parsed.vitals : [],
+          medicalRecords: isArray(parsed.medicalRecords) ? parsed.medicalRecords : [],
+          medicalContacts: typeof parsed.medicalContacts === 'object' && parsed.medicalContacts ? parsed.medicalContacts : {},
+        } as BackupData);
       } catch (e) {
         reject(new Error('バックアップファイルの読み込みに失敗しました(JSON形式ではありません)'));
       }

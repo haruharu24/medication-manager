@@ -60,4 +60,62 @@ export interface ReportConfig {
   includeMeds: boolean;
   includeCondition: boolean;
   includeHistory: boolean;
+  includeVitals: boolean;
+  includeAllergies: boolean;
+  includeContacts: boolean;
+}
+
+export type VitalType = 'bloodPressure' | 'weight' | 'temperature' | 'bloodSugar';
+
+interface VitalRecordBase {
+  id: string;
+  timestamp: number;
+  dateStr: string; // yyyy-MM-dd
+  memo?: string;
+}
+
+export interface BloodPressureRecord extends VitalRecordBase {
+  type: 'bloodPressure';
+  systolic: number;
+  diastolic: number;
+  pulse?: number;
+}
+
+export interface WeightRecord extends VitalRecordBase {
+  type: 'weight';
+  value: number; // kg
+}
+
+export interface TemperatureRecord extends VitalRecordBase {
+  type: 'temperature';
+  value: number; // ℃
+}
+
+export interface BloodSugarRecord extends VitalRecordBase {
+  type: 'bloodSugar';
+  value: number; // mg/dL
+}
+
+export type VitalRecord = BloodPressureRecord | WeightRecord | TemperatureRecord | BloodSugarRecord;
+
+export type MedicalRecordType = 'allergy' | 'history';
+
+export interface MedicalRecord {
+  id: string;
+  type: MedicalRecordType;
+  title: string;
+  detail?: string;
+  diagnosedDate?: string; // yyyy-MM-dd
+  severity?: 'mild' | 'moderate' | 'severe';
+  createdAt: number;
+}
+
+export interface MedicalContacts {
+  pharmacyName?: string;
+  pharmacyPhone?: string;
+  hospitalName?: string;
+  hospitalPhone?: string;
+  doctorName?: string;
+  nextAppointment?: string; // yyyy-MM-dd
+  memo?: string;
 }

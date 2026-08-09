@@ -5,9 +5,9 @@
 // so each of these clears the store and bulk-writes the given snapshot in one
 // transaction instead of composing the single-item put/delete functions.
 import { getDB } from './database';
-import type { Medication, MedicationLog, DailyCondition, GlobalActionLog } from '../types';
+import type { Medication, MedicationLog, DailyCondition, GlobalActionLog, VitalRecord, MedicalRecord } from '../types';
 
-async function replaceStore<Name extends 'medications' | 'logs' | 'conditions' | 'globalLogs'>(
+async function replaceStore<Name extends 'medications' | 'logs' | 'conditions' | 'globalLogs' | 'vitals' | 'medicalRecords'>(
   storeName: Name,
   items: unknown[]
 ): Promise<void> {
@@ -22,6 +22,8 @@ export const replaceAllMedications = (medications: Medication[]) => replaceStore
 export const replaceAllLogs = (logs: MedicationLog[]) => replaceStore('logs', logs);
 export const replaceAllConditions = (conditions: DailyCondition[]) => replaceStore('conditions', conditions);
 export const replaceAllGlobalLogs = (globalLogs: GlobalActionLog[]) => replaceStore('globalLogs', globalLogs);
+export const replaceAllVitals = (vitals: VitalRecord[]) => replaceStore('vitals', vitals);
+export const replaceAllMedicalRecords = (medicalRecords: MedicalRecord[]) => replaceStore('medicalRecords', medicalRecords);
 
 export async function resetAllData(): Promise<void> {
   const db = await getDB();
@@ -31,5 +33,7 @@ export async function resetAllData(): Promise<void> {
     db.clear('conditions'),
     db.clear('globalLogs'),
     db.clear('settings'),
+    db.clear('vitals'),
+    db.clear('medicalRecords'),
   ]);
 }

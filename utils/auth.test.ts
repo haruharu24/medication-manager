@@ -5,7 +5,7 @@ vi.mock('./api', () => ({
   apiRequest: vi.fn(),
 }));
 
-import { getStoredAuth, clearStoredAuth, register, login } from './auth';
+import { getStoredAuth, clearStoredAuth, register, login, deleteAccount } from './auth';
 
 const mockedApiRequest = vi.mocked(apiRequest);
 
@@ -50,6 +50,19 @@ describe('auth storage + API helpers', () => {
     });
     expect(result).toEqual(auth);
     expect(getStoredAuth()).toEqual(auth);
+  });
+
+  it('deleteAccount DELETEs /api/auth/me with the token and password', async () => {
+    mockedApiRequest.mockResolvedValue({ ok: true });
+
+    const result = await deleteAccount('tok', 'password123');
+
+    expect(mockedApiRequest).toHaveBeenCalledWith('/api/auth/me', {
+      method: 'DELETE',
+      token: 'tok',
+      body: { password: 'password123' },
+    });
+    expect(result).toEqual({ ok: true });
   });
 
   it('clearStoredAuth removes the stored session', async () => {

@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { setupFreshDB } from './testUtils';
-import { replaceAllMedications, replaceAllLogs, replaceAllConditions, replaceAllGlobalLogs, resetAllData } from '../bulk';
+import { replaceAllMedications, replaceAllLogs, replaceAllConditions, replaceAllGlobalLogs, replaceAllVitals, replaceAllMedicalRecords, resetAllData } from '../bulk';
 import { getAllMedications, saveMedication } from '../medications';
 import { getAllLogs, saveLog } from '../logs';
 import { getAllConditions, saveCondition } from '../conditions';
 import { getAllGlobalLogs, saveGlobalLog } from '../globalLogs';
 import { getReminderSettings, saveReminderSettings } from '../settings';
-import type { Medication, MedicationLog, DailyCondition, GlobalActionLog } from '../../types';
+import { getAllVitals, saveVital } from '../vitals';
+import { getAllMedicalRecords, saveMedicalRecord } from '../medicalRecords';
+import { getMedicalContacts, saveMedicalContacts } from '../contacts';
+import type { Medication, MedicationLog, DailyCondition, GlobalActionLog, VitalRecord, MedicalRecord } from '../../types';
 
 const makeMed = (overrides: Partial<Medication> = {}): Medication => ({
   id: crypto.randomUUID(),
@@ -68,15 +71,36 @@ describe('replaceAllX', () => {
 
     expect(await getAllGlobalLogs()).toEqual([log]);
   });
+
+  it('replaceAllVitalsはバイタルストアを置き換える', async () => {
+    const vital: VitalRecord = { id: 'v-1', type: 'weight', value: 60, timestamp: Date.now(), dateStr: '2026-08-08' };
+    await saveVital({ id: 'stale-v', type: 'weight', value: 1, timestamp: 1, dateStr: '2020-01-01' });
+
+    await replaceAllVitals([vital]);
+
+    expect(await getAllVitals()).toEqual([vital]);
+  });
+
+  it('replaceAllMedicalRecordsはアレルギー・既往歴ストアを置き換える', async () => {
+    const record: MedicalRecord = { id: 'r-1', type: 'allergy', title: 'ペニシリン', createdAt: Date.now() };
+    await saveMedicalRecord({ id: 'stale-r', type: 'history', title: '古い記録', createdAt: 1 });
+
+    await replaceAllMedicalRecords([record]);
+
+    expect(await getAllMedicalRecords()).toEqual([record]);
+  });
 });
 
 describe('resetAllData', () => {
-  it('全5ストアを空にする', async () => {
+  it('全7ストアを空にする', async () => {
     await saveMedication(makeMed());
     await saveLog({ id: 'log-1', medicationId: 'med-1', timestamp: Date.now(), dateStr: '2026-08-08' });
     await saveCondition({ dateStr: '2026-08-08', score: 5, memo: '' });
     await saveGlobalLog({ id: 'gl-1', timestamp: Date.now(), type: 'add', title: '薬' });
     await saveReminderSettings({ enabled: true, time: '09:00', lastCheckedDate: '2026-08-08' });
+    await saveVital({ id: 'v-1', type: 'weight', value: 60, timestamp: Date.now(), dateStr: '2026-08-08' });
+    await saveMedicalRecord({ id: 'r-1', type: 'allergy', title: 'ペニシリン', createdAt: Date.now() });
+    await saveMedicalContacts({ pharmacyName: 'さくら薬局' });
 
     await resetAllData();
 
@@ -85,5 +109,10 @@ describe('resetAllData', () => {
     expect(await getAllConditions()).toHaveLength(0);
     expect(await getAllGlobalLogs()).toHaveLength(0);
     expect(await getReminderSettings()).toEqual({ enabled: false, time: '08:00', lastCheckedDate: '' });
+    expect(await getAllVitals()).toHaveLength(0);
+    expect(await getAllMedicalRecords()).toHaveLength(0);
+    // medicalContacts lives in the same 'settings' store as reminderSettings,
+    // which resetAllData already clears wholesale.
+    expect(await getMedicalContacts()).toEqual({});
   });
 });

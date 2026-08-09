@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb';
-import type { Medication, MedicationLog, DailyCondition, ReminderSettings, GlobalActionLog } from '../types';
+import type { Medication, MedicationLog, DailyCondition, ReminderSettings, GlobalActionLog, VitalRecord, MedicalRecord } from '../types';
 
 export interface AppDB {
   medications: {
@@ -29,10 +29,25 @@ export interface AppDB {
     key: string;
     value: { key: string; value: unknown };
   };
+  vitals: {
+    key: string;
+    value: VitalRecord;
+    indexes: {
+      'by-date': string;
+      'by-type': string;
+    };
+  };
+  medicalRecords: {
+    key: string;
+    value: MedicalRecord;
+    indexes: {
+      'by-type': string;
+    };
+  };
 }
 
 const DB_NAME = 'medication-manager';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbInstance: IDBPDatabase<AppDB> | null = null;
 
@@ -62,6 +77,17 @@ export async function getDB(): Promise<IDBPDatabase<AppDB>> {
 
       if (!db.objectStoreNames.contains('settings')) {
         db.createObjectStore('settings', { keyPath: 'key' });
+      }
+
+      if (!db.objectStoreNames.contains('vitals')) {
+        const vitalsStore = db.createObjectStore('vitals', { keyPath: 'id' });
+        vitalsStore.createIndex('by-date', 'dateStr');
+        vitalsStore.createIndex('by-type', 'type');
+      }
+
+      if (!db.objectStoreNames.contains('medicalRecords')) {
+        const medicalRecordsStore = db.createObjectStore('medicalRecords', { keyPath: 'id' });
+        medicalRecordsStore.createIndex('by-type', 'type');
       }
     },
   });

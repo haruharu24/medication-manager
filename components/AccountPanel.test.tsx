@@ -23,6 +23,8 @@ const baseProps = {
   onSelectHousehold: vi.fn(),
   onLeaveHousehold: vi.fn(),
   onUpdateMemberRole: vi.fn(),
+  onTransferOwnership: vi.fn(),
+  onDeleteAccount: vi.fn(),
 };
 
 describe('AccountPanel (logged out)', () => {
@@ -113,7 +115,8 @@ describe('AccountPanel (logged in, active household)', () => {
     expect(screen.getByText('テスト家族')).toBeInTheDocument();
     expect(screen.getByText(/ABCD1234/)).toBeInTheDocument();
     expect(screen.getAllByText('alice@example.com').length).toBeGreaterThan(0);
-    expect(screen.getByText('bob@example.com')).toBeInTheDocument();
+    // Appears both in the member list row and in the new owner-transfer select's options.
+    expect(screen.getAllByText('bob@example.com').length).toBeGreaterThan(0);
   });
 
   it('calls onLeaveHousehold when leaving', async () => {
@@ -163,5 +166,74 @@ describe('AccountPanel (logged in, active household)', () => {
     render(<AccountPanel {...baseProps} auth={bobAuth} households={[household]} activeHouseholdId="h1" members={viewerMembers} />);
 
     expect(screen.getByText('閲覧のみのメンバーです。お薬の追加・編集はできません。')).toBeInTheDocument();
+  });
+
+  it('shows the owner-transfer control only to the owner when there are other members', () => {
+    const { rerender } = render(<AccountPanel {...baseProps} auth={auth} households={[household]} activeHouseholdId="h1" members={members} />);
+    expect(screen.getByLabelText('移譲先のメンバー')).toBeInTheDocument();
+
+    const bobAuth: StoredAuth = { token: 'tok', user: { id: 'u2', email: 'bob@example.com' } };
+    rerender(<AccountPanel {...baseProps} auth={bobAuth} households={[household]} activeHouseholdId="h1" members={members} />);
+    expect(screen.queryByLabelText('移譲先のメンバー')).not.toBeInTheDocument();
+  });
+
+  it('calls onTransferOwnership with the selected member after confirming', async () => {
+    const user = userEvent.setup();
+    const onTransferOwnership = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<AccountPanel {...baseProps} auth={auth} households={[household]} activeHouseholdId="h1" members={members} onTransferOwnership={onTransferOwnership} />);
+
+    await user.selectOptions(screen.getByLabelText('移譲先のメンバー'), 'u2');
+    await user.click(screen.getByRole('button', { name: '移譲' }));
+
+    expect(onTransferOwnership).toHaveBeenCalledWith('u2');
+    vi.restoreAllMocks();
+  });
+});
+
+describe('AccountPanel (account deletion)', () => {
+  it('opens the delete-account modal and requires both password and the confirm word before submitting', async () => {
+    const user = userEvent.setup();
+    render(<AccountPanel {...baseProps} auth={auth} />);
+
+    await user.click(screen.getByRole('button', { name: /アカウントを削除/ }));
+    const submit = screen.getByRole('button', { name: '完全に削除する' });
+    expect(submit).toBeDisabled();
+
+    await user.type(screen.getByLabelText('パスワード'), 'password123');
+    expect(submit).toBeDisabled(); // confirm word not yet typed
+
+    await user.type(screen.getByLabelText('確認のため「削除」と入力してください'), '削除');
+    expect(submit).toBeEnabled();
+  });
+
+  it('calls onDeleteAccount with the entered password', async () => {
+    const user = userEvent.setup();
+    const onDeleteAccount = vi.fn().mockResolvedValue(undefined);
+    render(<AccountPanel {...baseProps} auth={auth} onDeleteAccount={onDeleteAccount} />);
+
+    await user.click(screen.getByRole('button', { name: /アカウントを削除/ }));
+    await user.type(screen.getByLabelText('パスワード'), 'password123');
+    await user.type(screen.getByLabelText('確認のため「削除」と入力してください'), '削除');
+    await user.click(screen.getByRole('button', { name: '完全に削除する' }));
+
+    expect(onDeleteAccount).toHaveBeenCalledWith('password123');
+  });
+
+  it('shows the server error, including blocking household names, when deletion is refused', async () => {
+    const user = userEvent.setup();
+    const apiError = Object.assign(new Error('先に権限を移譲してください'), {
+      data: { households: [{ id: 'h1', name: 'テスト家族' }] },
+    });
+    const onDeleteAccount = vi.fn().mockRejectedValue(apiError);
+    render(<AccountPanel {...baseProps} auth={auth} onDeleteAccount={onDeleteAccount} />);
+
+    await user.click(screen.getByRole('button', { name: /アカウントを削除/ }));
+    await user.type(screen.getByLabelText('パスワード'), 'password123');
+    await user.type(screen.getByLabelText('確認のため「削除」と入力してください'), '削除');
+    await user.click(screen.getByRole('button', { name: '完全に削除する' }));
+
+    expect(await screen.findByText(/先に権限を移譲してください/)).toBeInTheDocument();
+    expect(screen.getByText(/テスト家族/)).toBeInTheDocument();
   });
 });
