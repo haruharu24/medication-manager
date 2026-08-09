@@ -66,8 +66,8 @@ npm run test:all      # test + test:e2e をまとめて実行
 ## お薬手帳スキャン(クライアント側OCR)
 
 - お薬手帳の写真からお薬を登録する「手帳スキャン」機能は、AI(Gemini)を呼ばずクライアント側のTesseract.js(OCR)のみで動く。公開アプリでAPI費用が青天井になるリスクを避けるための設計。飲み合わせチェック(`utils/interactionCheck.ts`)は引き続きGeminiを使う、このアプリで唯一のAI機能。
-- `utils/ocrRecognize.ts` がTesseract.jsのラッパーで、`public/tesseract/` に自前ホストしたアセット(`worker.min.js` / `core/tesseract-core-simd.wasm.js` / `lang/jpn.traineddata.gz`)を使う。デフォルトのCDN取得(jsdelivr)は使わない — Tailwindがビルド時コンパイルになっている理由と同じで、CDN依存はネットワーク制限のある環境(このリポジトリの開発サンドボックス含む)でE2Eテストを壊す。`corePath` はディレクトリではなく単一ファイルへのフルパスを渡すことで、SIMD/relaxed-SIMD判定による6種類のコアファイル自動選択を回避している。
-- 自前ホストしている `jpn.traineddata` はLSTM非対応の旧式フォーマットのため、OEM(エンジンモード)は `0`(レガシー)を使っている。LSTM版より認識精度は劣る。より高精度なLSTM版データに差し替える場合は `tesseract-ocr/tessdata_fast` 等から取得し、`utils/ocrRecognize.ts` のOEMとcoreファイルを両方 `-lstm` 系に切り替えること(データとエンジンのLSTM対応有無が食い違うと "LSTM requested, but not present" で失敗する)。
+- `utils/ocrRecognize.ts` がTesseract.jsのラッパーで、`public/tesseract/` に自前ホストしたアセット(`worker.min.js` / `core/tesseract-core-simd-lstm.wasm.js` / `lang/jpn.traineddata`)を使う。デフォルトのCDN取得(jsdelivr)は使わない — Tailwindがビルド時コンパイルになっている理由と同じで、CDN依存はネットワーク制限のある環境(このリポジトリの開発サンドボックス含む)でE2Eテストを壊す。`corePath` はディレクトリではなく単一ファイルへのフルパスを渡すことで、SIMD/relaxed-SIMD判定による6種類のコアファイル自動選択を回避している。
+- OEM(エンジンモード)はLSTM版(`1`)を使用。`jpn.traineddata` は `tesseract-ocr/tessdata_fast` から取得したLSTM対応データで、`gzip: false`(圧縮なしのファイルそのまま)。データとcoreファイルのLSTM対応有無が食い違うと "LSTM requested, but not present" で失敗するため、どちらかを差し替える場合は両方を揃えること。
 - `utils/ocrParse.ts` が生のOCRテキストから正規表現でお薬の項目(名前・用量・単位・タイミング)を抽出する純粋関数。1枚の写真につき1件のドラフトとして扱い、AIと違って1枚の写真に複数のお薬が写っていても自動分割はしない(`CameraModal` のヒント文言で1枚1件を推奨)。用量・タイミングの両方を検出できなかった場合のみ、生のOCRテキストをmemoに残す。
 - `ScanReviewModal` はドラフトの出所(AI/OCR)に依存しない作りなので、スキャン方式を変更してもこのコンポーネント自体は変更不要。
 

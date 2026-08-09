@@ -8,23 +8,22 @@ import { createWorker } from 'tesseract.js';
 // of six ~4MB core variants the current device supports and only one is
 // self-hosted here.
 const WORKER_PATH = '/tesseract/worker.min.js';
-// Legacy (non-LSTM) core/engine: the self-hosted jpn.traineddata (sourced from
-// the @tessdata/jpn npm package, an older Tesseract 3.x/4.0-era build) has no
-// LSTM model, so OEM.LSTM_ONLY (1) fails with "LSTM requested, but not
-// present!!" — OEM.TESSERACT_ONLY (0) matches the legacy-only data actually
-// available here.
-const CORE_PATH = '/tesseract/core/tesseract-core-simd.wasm.js';
+// LSTM engine/core, matching jpn.traineddata sourced from tesseract-ocr/tessdata_fast
+// (LSTM-capable). OEM.LSTM_ONLY (1) — using the legacy engine (0) here would fail
+// the same way the mismatched legacy data once failed against this core:
+// data/engine LSTM-support must match or recognition errors out entirely.
+const CORE_PATH = '/tesseract/core/tesseract-core-simd-lstm.wasm.js';
 const LANG_PATH = '/tesseract/lang/';
 
 let workerPromise: ReturnType<typeof createWorker> | null = null;
 
 const getWorker = () => {
   if (!workerPromise) {
-    workerPromise = createWorker('jpn', 0, {
+    workerPromise = createWorker('jpn', 1, {
       workerPath: WORKER_PATH,
       corePath: CORE_PATH,
       langPath: LANG_PATH,
-      gzip: true, // jpn.traineddata is stored as jpn.traineddata.gz
+      gzip: false, // jpn.traineddata is stored uncompressed (not .gz)
     });
   }
   return workerPromise;
