@@ -101,6 +101,27 @@ test.describe('accessibility @a11y', () => {
     expect(violations, formatViolations(violations)).toEqual([]);
   });
 
+  test('the allergy/medical history screen has no detectable a11y violations', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: '設定', exact: true }).click();
+    await page.getByText('アレルギー・既往歴').click();
+    await expect(page.getByRole('heading', { name: 'アレルギー・既往歴' })).toBeVisible();
+
+    const violations = await scan(page);
+    expect(violations, formatViolations(violations)).toEqual([]);
+  });
+
+  test('the allergy/medical history add-record form has no detectable a11y violations', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: '設定', exact: true }).click();
+    await page.getByText('アレルギー・既往歴').click();
+    await page.getByRole('button', { name: 'アレルギーを追加' }).click();
+    await expect(page.getByRole('dialog', { name: '記録を追加' })).toBeVisible();
+
+    const violations = await scan(page);
+    expect(violations, formatViolations(violations)).toEqual([]);
+  });
+
   test('the settings screen has no detectable a11y violations in English', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: '設定', exact: true }).click();

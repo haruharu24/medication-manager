@@ -15,9 +15,10 @@ import { MedicationListView } from './features/meds/MedicationListView';
 import { ReportSetupView } from './features/report/ReportSetupView';
 import { ReportPreviewView } from './features/report/ReportPreviewView';
 import { VitalsView } from './features/vitals/VitalsView';
+import { MedicalHistoryView } from './features/medicalHistory/MedicalHistoryView';
 import { ReminderOverlay } from './components/ReminderOverlay';
 import { OnboardingOverlay } from './components/OnboardingOverlay';
-import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload, ShieldAlert, Moon, Sun, HelpCircle, Activity } from 'lucide-react';
+import { Loader2, RotateCcw, ChevronRight, FileDown, Bell, Clock, AlertTriangle, Download, Upload, ShieldAlert, Moon, Sun, HelpCircle, Activity, Syringe } from 'lucide-react';
 import { recognizeImages } from './utils/ocrRecognize';
 import { parseOcrTextToMedication } from './utils/ocrParse';
 import { markMedicationTaken } from './utils/medicationActions';
@@ -94,6 +95,7 @@ const App: React.FC = () => {
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [showInteractionCheck, setShowInteractionCheck] = useState(false);
   const [showVitals, setShowVitals] = useState(false);
+  const [showMedicalHistory, setShowMedicalHistory] = useState(false);
   const [theme, setTheme] = useState<Theme>(getStoredTheme);
 
   const toggleTheme = () => {
@@ -333,6 +335,17 @@ const App: React.FC = () => {
 
   const handleDeleteVital = (id: string) => {
     setVitals(prev => prev.filter(v => v.id !== id));
+  };
+
+  const handleSaveMedicalRecord = (record: MedicalRecord) => {
+    setMedicalRecords(prev => {
+      const exists = prev.some(r => r.id === record.id);
+      return exists ? prev.map(r => (r.id === record.id ? record : r)) : [...prev, record];
+    });
+  };
+
+  const handleDeleteMedicalRecord = (id: string) => {
+    setMedicalRecords(prev => prev.filter(r => r.id !== id));
   };
 
   // Applies "take" actions recorded outside the app (notification tap, quick-record
@@ -700,6 +713,14 @@ const App: React.FC = () => {
                 <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
               </button>
 
+              <button onClick={() => setShowMedicalHistory(true)} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-orange-50 dark:bg-orange-500/10 text-orange-600 rounded-2xl flex items-center justify-center"><Syringe size={24}/></div>
+                  <div className="text-left"><p className="text-lg">{t.settings.medicalHistory}</p><p className="text-xs text-slate-500 dark:text-slate-500 font-bold">{t.settings.medicalHistoryDesc}</p></div>
+                </div>
+                <ChevronRight size={20} className="text-slate-300 dark:text-slate-600" />
+              </button>
+
               <button onClick={() => setView('report-setup')} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center"><FileDown size={24}/></div>
@@ -786,6 +807,16 @@ const App: React.FC = () => {
           onSave={handleSaveVital}
           onDelete={handleDeleteVital}
           onClose={() => setShowVitals(false)}
+          readOnly={isViewer}
+        />
+      )}
+
+      {showMedicalHistory && (
+        <MedicalHistoryView
+          records={medicalRecords}
+          onSave={handleSaveMedicalRecord}
+          onDelete={handleDeleteMedicalRecord}
+          onClose={() => setShowMedicalHistory(false)}
           readOnly={isViewer}
         />
       )}
