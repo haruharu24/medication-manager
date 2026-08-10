@@ -53,6 +53,14 @@ import {
   transferOwnership as apiTransferOwnership,
   connectHouseholdSocket,
 } from './utils/household';
+import { ApiError } from './utils/api';
+import {
+  SubscriptionInfo,
+  initPurchases,
+  getOfferings,
+  purchasePackage,
+  restorePurchases as apiRestorePurchases,
+} from './utils/subscription';
 
 const App: React.FC = () => {
   const { t, language, setLanguage } = useI18n();
@@ -110,6 +118,7 @@ const App: React.FC = () => {
   // --- Account / household (family) sync ---
   const [auth, setAuth] = useState<StoredAuth | null>(() => getStoredAuth());
   const [households, setHouseholds] = useState<Household[]>([]);
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [activeHouseholdId, setActiveHouseholdIdState] = useState<string | null>(() => localStorage.getItem('activeHouseholdId'));
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
@@ -142,8 +151,9 @@ const App: React.FC = () => {
   };
 
   const refreshHouseholds = useCallback(async (currentAuth: StoredAuth) => {
-    const { households: list } = await fetchMe(currentAuth.token);
+    const { households: list, subscription: sub } = await fetchMe(currentAuth.token);
     setHouseholds(list);
+    setSubscription(sub);
     return list;
   }, []);
 
@@ -151,9 +161,14 @@ const App: React.FC = () => {
     if (!auth) {
       setHouseholds([]);
       setHouseholdMembers([]);
+      setSubscription(null);
       return;
     }
     refreshHouseholds(auth).catch(() => {});
+    // Registers this device's purchase session under the MediMate user id (the
+    // RevenueCat appUserID), so a later webhook's app_user_id round-trips back to
+    // this same account. No-ops outside a native shell (see utils/subscription.ts).
+    initPurchases(auth.user.id).catch(() => {});
   }, [auth, refreshHouseholds]);
 
   useEffect(() => {
@@ -260,6 +275,27 @@ const App: React.FC = () => {
     const { members } = await apiTransferOwnership(auth.token, activeHouseholdId, newOwnerId);
     setHouseholdMembers(members);
     await refreshHouseholds(auth);
+  };
+
+  // The server's subscriptionStatus only updates once RevenueCat's webhook
+  // arrives (see server/index.js) — refreshHouseholds re-fetches it, but there
+  // can be a short delay after a purchase before the webhook lands.
+  const handlePurchase = async () => {
+    const offering = await getOfferings();
+    const pkg = offering?.availablePackages[0];
+    if (!pkg) throw new Error('購入可能なプランが見つかりませんでした');
+    const result = await purchasePackage(pkg);
+    if (!result.ok) {
+      if (result.cancelled) return;
+      throw new Error(result.reason || '購入処理に失敗しました');
+    }
+    if (auth) await refreshHouseholds(auth);
+  };
+
+  const handleRestorePurchases = async () => {
+    const result = await apiRestorePurchases();
+    if (!result.ok) throw new Error(result.reason || '購入の復元に失敗しました');
+    if (auth) await refreshHouseholds(auth);
   };
 
   // Deletes the account server-side, then behaves like handleLogout locally.
@@ -720,6 +756,7 @@ const App: React.FC = () => {
                 members={householdMembers}
                 syncStatus={syncStatus}
                 syncError={syncError}
+                subscription={subscription}
                 onLogin={handleLogin}
                 onRegister={handleRegister}
                 onLogout={handleLogout}
@@ -730,6 +767,8 @@ const App: React.FC = () => {
                 onUpdateMemberRole={handleUpdateMemberRole}
                 onTransferOwnership={handleTransferOwnership}
                 onDeleteAccount={handleDeleteAccount}
+                onPurchase={handlePurchase}
+                onRestorePurchases={handleRestorePurchases}
               />
 
               <button onClick={() => setShowVitals(true)} className="w-full p-6 bg-white dark:bg-slate-800 rounded-[32px] border border-slate-100 dark:border-slate-700 flex items-center justify-between font-black text-slate-800 dark:text-slate-100 shadow-sm active:scale-95 transition-all">

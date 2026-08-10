@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import http from 'http';
+import crypto from 'crypto';
 import express from 'express';
 import cors from 'cors';
 import webpush from 'web-push';
@@ -31,7 +32,9 @@ import {
   setMemberRole,
   transferOwnership,
   deleteUser,
+  updateSubscriptionFromWebhook,
 } from './accountStore.js';
+import { requireActiveSubscription, requireHouseholdOwnerActiveSubscription } from './subscription.js';
 
 const PORT = process.env.PORT || 8787;
 const PUBLIC_SERVER_URL = process.env.PUBLIC_SERVER_URL || `http://localhost:${PORT}`;
@@ -40,6 +43,7 @@ const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:example@example.com';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
 const JWT_SECRET = process.env.JWT_SECRET;
+const REVENUECAT_WEBHOOK_SECRET = process.env.REVENUECAT_WEBHOOK_SECRET;
 
 if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
   console.error(
@@ -54,6 +58,15 @@ if (!JWT_SECRET) {
     'JWT_SECRET is not set.\n' +
     'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"\n' +
     'and copy it into server/.env (see .env.example).'
+  );
+  process.exit(1);
+}
+
+if (!REVENUECAT_WEBHOOK_SECRET) {
+  console.error(
+    'REVENUECAT_WEBHOOK_SECRET is not set.\n' +
+    'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"\n' +
+    'and set the same value in the RevenueCat dashboard webhook config (see .env.example).'
   );
   process.exit(1);
 }
@@ -128,7 +141,16 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
     inviteCode: h.inviteCode,
     ownerId: h.ownerId,
   }));
-  res.json({ user: req.user, households });
+  const user = findUserById(req.user.id);
+  res.json({
+    user: req.user,
+    households,
+    subscription: {
+      status: user.subscriptionStatus,
+      productId: user.subscriptionProductId,
+      currentPeriodEnd: user.currentPeriodEnd,
+    },
+  });
 });
 
 // Irreversible, so the password is re-verified server-side even though the
@@ -151,14 +173,14 @@ app.delete('/api/auth/me', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/households', requireAuth, (req, res) => {
+app.post('/api/households', requireAuth, requireActiveSubscription, (req, res) => {
   const { name } = req.body || {};
   if (!name) return res.status(400).json({ error: '世帯名を入力してください' });
   const household = createHousehold({ name, ownerId: req.user.id });
   res.json({ household });
 });
 
-app.post('/api/households/join', requireAuth, (req, res) => {
+app.post('/api/households/join', requireAuth, requireActiveSubscription, (req, res) => {
   const { inviteCode } = req.body || {};
   if (!inviteCode) return res.status(400).json({ error: '招待コードを入力してください' });
   try {
@@ -238,12 +260,64 @@ app.get('/api/households/:id/data', requireAuth, requireMembership, (req, res) =
   res.json(getHouseholdData(req.params.id) || { data: null, updatedAt: null });
 });
 
-app.put('/api/households/:id/data', requireAuth, requireMembership, requireEditor, (req, res) => {
+app.put('/api/households/:id/data', requireAuth, requireMembership, requireEditor, requireHouseholdOwnerActiveSubscription, (req, res) => {
   const { data } = req.body || {};
   if (!data) return res.status(400).json({ error: 'data is required' });
   const entry = setHouseholdData(req.params.id, data);
   broadcastToHousehold(req.params.id, { type: 'data-updated', updatedAt: entry.updatedAt });
   res.json({ updatedAt: entry.updatedAt });
+});
+
+// --- RevenueCat webhook: sole source of truth for subscription status. Never
+// trust client-reported entitlement for server-side gating — only this route
+// writes subscriptionStatus. Always responds 2xx (even for unknown event types
+// or an unrecognized app_user_id) so RevenueCat doesn't retry-storm us. ---
+
+const REVENUECAT_EVENT_STATUS = {
+  INITIAL_PURCHASE: 'active',
+  RENEWAL: 'active',
+  UNCANCELLATION: 'active',
+  PRODUCT_CHANGE: 'active',
+  EXPIRATION: 'expired',
+  BILLING_ISSUE: 'billing_issue',
+};
+
+app.post('/api/webhooks/revenuecat', (req, res) => {
+  const header = req.headers.authorization || '';
+  const provided = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const expected = REVENUECAT_WEBHOOK_SECRET;
+  const providedBuf = Buffer.from(provided);
+  const expectedBuf = Buffer.from(expected);
+  const authorized =
+    providedBuf.length === expectedBuf.length && crypto.timingSafeEqual(providedBuf, expectedBuf);
+  if (!authorized) return res.status(401).json({ error: 'unauthorized' });
+
+  const event = req.body?.event || {};
+  const userId = event.app_user_id;
+  if (!userId || !findUserById(userId)) {
+    return res.json({ ok: true, ignored: true });
+  }
+
+  // CANCELLATION means auto-renew was turned off but the current period is
+  // still paid for — access continues until EXPIRATION arrives at period end.
+  if (event.type === 'CANCELLATION') {
+    updateSubscriptionFromWebhook({ userId, status: findUserById(userId).subscriptionStatus });
+    return res.json({ ok: true });
+  }
+
+  const status = REVENUECAT_EVENT_STATUS[event.type];
+  if (!status) {
+    console.log(`RevenueCat webhook: ignoring unhandled event type "${event.type}"`);
+    return res.json({ ok: true, ignored: true });
+  }
+
+  updateSubscriptionFromWebhook({
+    userId,
+    status,
+    productId: event.product_id,
+    periodEnd: event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : undefined,
+  });
+  res.json({ ok: true });
 });
 
 const buildPayload = (endpoint, reminder) => ({

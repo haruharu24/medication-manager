@@ -25,14 +25,26 @@ const genInviteCode = () => crypto.randomBytes(4).toString('hex').toUpperCase();
 
 // --- users ---
 
+// Backfills the subscription fields for users written before this feature
+// existed, so old accounts.json data never needs an offline migration script
+// — every read site funnels through here instead.
+const normalizeUser = (user) => user && ({
+  ...user,
+  subscriptionStatus: user.subscriptionStatus ?? 'none',
+  revenueCatCustomerId: user.revenueCatCustomerId ?? null,
+  subscriptionProductId: user.subscriptionProductId ?? null,
+  currentPeriodEnd: user.currentPeriodEnd ?? null,
+  subscriptionUpdatedAt: user.subscriptionUpdatedAt ?? null,
+});
+
 export const findUserByEmail = (email) => {
   const db = read();
-  return db.users.find((u) => u.email.toLowerCase() === email.toLowerCase()) || null;
+  return normalizeUser(db.users.find((u) => u.email.toLowerCase() === email.toLowerCase())) || null;
 };
 
 export const findUserById = (id) => {
   const db = read();
-  return db.users.find((u) => u.id === id) || null;
+  return normalizeUser(db.users.find((u) => u.id === id)) || null;
 };
 
 export const createUser = ({ email, passwordHash }) => {
@@ -40,10 +52,44 @@ export const createUser = ({ email, passwordHash }) => {
   if (db.users.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
     throw new Error('EMAIL_TAKEN');
   }
-  const user = { id: genId(), email, passwordHash, createdAt: new Date().toISOString() };
+  const user = {
+    id: genId(),
+    email,
+    passwordHash,
+    createdAt: new Date().toISOString(),
+    subscriptionStatus: 'none',
+    revenueCatCustomerId: null,
+    subscriptionProductId: null,
+    currentPeriodEnd: null,
+    subscriptionUpdatedAt: null,
+  };
   db.users.push(user);
   write(db);
   return user;
+};
+
+// --- subscription (family-sharing paywall, via RevenueCat) ---
+
+export const getSubscriptionStatus = (userId) => {
+  const user = findUserById(userId);
+  return user ? user.subscriptionStatus : null;
+};
+
+// The only write path for subscription state — called from the RevenueCat
+// webhook handler in index.js. `revenueCatCustomerId` is set to userId itself
+// (see utils/subscription.ts: Purchases.configure uses user.id as the
+// RevenueCat appUserID), stored anyway for explicitness/debuggability.
+export const updateSubscriptionFromWebhook = ({ userId, status, productId, periodEnd }) => {
+  const db = read();
+  const user = db.users.find((u) => u.id === userId);
+  if (!user) throw new Error('USER_NOT_FOUND');
+  user.subscriptionStatus = status;
+  user.revenueCatCustomerId = userId;
+  if (productId !== undefined) user.subscriptionProductId = productId;
+  if (periodEnd !== undefined) user.currentPeriodEnd = periodEnd;
+  user.subscriptionUpdatedAt = new Date().toISOString();
+  write(db);
+  return normalizeUser(user);
 };
 
 // --- households ---

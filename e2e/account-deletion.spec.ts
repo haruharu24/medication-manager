@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { activateSubscription } from './helpers/subscription';
 
 test.describe('account deletion', () => {
   test('deletes an account with no household memberships and returns to the logged-out view', async ({ page }) => {
@@ -29,7 +30,7 @@ test.describe('account deletion', () => {
     await expect(page.getByPlaceholder('パスワード(8文字以上)')).toBeVisible();
   });
 
-  test('blocks deleting an owner of a multi-member household until ownership is transferred', async ({ browser }) => {
+  test('blocks deleting an owner of a multi-member household until ownership is transferred', async ({ browser, request }) => {
     const suffix = Date.now();
     const ctxA = await browser.newContext();
     const ctxB = await browser.newContext();
@@ -48,6 +49,10 @@ test.describe('account deletion', () => {
     await pageA.getByPlaceholder('メールアドレス').fill(`del-owner-${suffix}@example.com`);
     await pageA.getByPlaceholder('パスワード(8文字以上)').fill('password123');
     await pageA.getByRole('button', { name: 'アカウントを作成する' }).click();
+    await expect(pageA.getByText(`del-owner-${suffix}@example.com`)).toBeVisible();
+    await activateSubscription(request, `del-owner-${suffix}@example.com`, 'password123');
+    await pageA.reload();
+    await pageA.getByRole('button', { name: '設定', exact: true }).click();
 
     await pageA.getByPlaceholder('例: 田中家').fill('削除テスト家族');
     await pageA.getByRole('button', { name: '作成', exact: true }).click();
@@ -60,6 +65,10 @@ test.describe('account deletion', () => {
     await pageB.getByPlaceholder('メールアドレス').fill(`del-member-${suffix}@example.com`);
     await pageB.getByPlaceholder('パスワード(8文字以上)').fill('password123');
     await pageB.getByRole('button', { name: 'アカウントを作成する' }).click();
+    await expect(pageB.getByText(`del-member-${suffix}@example.com`)).toBeVisible();
+    await activateSubscription(request, `del-member-${suffix}@example.com`, 'password123');
+    await pageB.reload();
+    await pageB.getByRole('button', { name: '設定', exact: true }).click();
     await pageB.getByPlaceholder('招待コード').fill(inviteCode!);
     await pageB.getByRole('button', { name: '参加', exact: true }).click();
     await expect(pageB.getByText('削除テスト家族')).toBeVisible();

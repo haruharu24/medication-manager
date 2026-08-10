@@ -5,8 +5,15 @@ import userEvent from '@testing-library/user-event';
 import { AccountPanel } from './AccountPanel';
 import { StoredAuth } from '../utils/auth';
 import { Household, HouseholdMember } from '../utils/household';
+import { ApiError } from '../utils/api';
+import { SubscriptionInfo } from '../utils/subscription';
 
 const auth: StoredAuth = { token: 'tok', user: { id: 'u1', email: 'alice@example.com' } };
+
+// Most existing tests exercise the create/join forms, which are hidden behind the
+// paywall unless the caller has an active subscription — default to 'active' here
+// and override to 'none' in the paywall-specific tests below.
+const activeSubscription: SubscriptionInfo = { status: 'active', productId: 'family_sharing_monthly', currentPeriodEnd: null };
 
 const baseProps = {
   auth: null as StoredAuth | null,
@@ -15,6 +22,7 @@ const baseProps = {
   members: [] as HouseholdMember[],
   syncStatus: 'idle' as const,
   syncError: null as string | null,
+  subscription: activeSubscription as SubscriptionInfo | null,
   onLogin: vi.fn(),
   onRegister: vi.fn(),
   onLogout: vi.fn(),
@@ -25,6 +33,8 @@ const baseProps = {
   onUpdateMemberRole: vi.fn(),
   onTransferOwnership: vi.fn(),
   onDeleteAccount: vi.fn(),
+  onPurchase: vi.fn(),
+  onRestorePurchases: vi.fn(),
 };
 
 describe('AccountPanel (logged out)', () => {
@@ -99,6 +109,56 @@ describe('AccountPanel (logged in, no household yet)', () => {
     await user.click(screen.getByRole('button', { name: '参加' }));
 
     expect(onJoinHousehold).toHaveBeenCalledWith('ABCD1234');
+  });
+});
+
+describe('AccountPanel (subscription paywall)', () => {
+  const noSubscription: SubscriptionInfo = { status: 'none', productId: null, currentPeriodEnd: null };
+
+  it('shows the paywall instead of create/join forms when there is no active subscription', () => {
+    render(<AccountPanel {...baseProps} auth={auth} subscription={noSubscription} />);
+
+    expect(screen.getByText('家族共有は月額プラン')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('例: 田中家')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('招待コード')).not.toBeInTheDocument();
+  });
+
+  it('treats grace_period as entitled and shows the create/join forms', () => {
+    render(<AccountPanel {...baseProps} auth={auth} subscription={{ status: 'grace_period', productId: null, currentPeriodEnd: null }} />);
+
+    expect(screen.queryByText('家族共有は月額プラン')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('例: 田中家')).toBeInTheDocument();
+  });
+
+  it('calls onPurchase when the purchase button is clicked', async () => {
+    const user = userEvent.setup();
+    const onPurchase = vi.fn().mockResolvedValue(undefined);
+    render(<AccountPanel {...baseProps} auth={auth} subscription={noSubscription} onPurchase={onPurchase} />);
+
+    await user.click(screen.getByRole('button', { name: '月額¥500で登録する' }));
+    expect(onPurchase).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onRestorePurchases when the restore button is clicked', async () => {
+    const user = userEvent.setup();
+    const onRestorePurchases = vi.fn().mockResolvedValue(undefined);
+    render(<AccountPanel {...baseProps} auth={auth} subscription={noSubscription} onRestorePurchases={onRestorePurchases} />);
+
+    await user.click(screen.getByRole('button', { name: '購入を復元' }));
+    expect(onRestorePurchases).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the paywall when a create attempt fails with SUBSCRIPTION_REQUIRED, even if the cached status looked active', async () => {
+    const user = userEvent.setup();
+    const err = new ApiError('家族共有には月額サブスクリプションが必要です');
+    err.data = { code: 'SUBSCRIPTION_REQUIRED' };
+    const onCreateHousehold = vi.fn().mockRejectedValue(err);
+    render(<AccountPanel {...baseProps} auth={auth} subscription={activeSubscription} onCreateHousehold={onCreateHousehold} />);
+
+    await user.type(screen.getByPlaceholderText('例: 田中家'), 'テスト家族');
+    await user.click(screen.getByRole('button', { name: '作成' }));
+
+    expect(await screen.findByText('家族共有は月額プラン')).toBeInTheDocument();
   });
 });
 

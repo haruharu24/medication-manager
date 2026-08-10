@@ -61,6 +61,28 @@ View your app in AI Studio: https://ai.studio/apps/3483c948-33d1-401c-9131-7ef50
 
 アカウント・世帯・同期データは `server/data/accounts.json` にJSONファイルとして保存される(git管理外)。パスワードは常にハッシュ化して保存する。本番運用する場合はデータベースへの置き換えとHTTPS必須化を推奨。
 
+## 家族共有の月額課金(RevenueCat / Apple IAP)
+
+家族共有(世帯の作成・参加・データ同期)は月額¥500のサブスクリプションで課金する。**お薬の追加・編集など通常のアプリ利用は、サブスクリプションの有無に関わらず常に無料。**
+
+- 決済処理そのものはApple In-App Purchase(RevenueCat経由)が担い、`server/`はRevenueCatが送るWebhook(`POST /api/webhooks/revenuecat`)を受け取って`users[].subscriptionStatus`を更新するだけ。クライアントから送られてくる購入完了通知は一切信用せず、Webhookだけが唯一の書き込み経路(詳細は[CLAUDE.md](CLAUDE.md)を参照)。
+- `server/.env` に `REVENUECAT_WEBHOOK_SECRET`(RevenueCatダッシュボードのWebhook設定と同じ値、生成方法は `.env.example` 参照)を設定する。未設定だとサーバーは起動時にエラーで終了する。
+- フロントエンドの `.env.local` に `VITE_REVENUECAT_SDK_KEY`(RevenueCatの公開SDKキー)を設定する。ネイティブアプリ(iOS)からのみ使用され、ブラウザ/開発環境では安全に無視される。
+- ネイティブアプリのビルド手順(Capacitor + Xcode)は次のセクションを参照。
+
+## iOSネイティブアプリ化(Capacitor)
+
+このリポジトリは[Capacitor](https://capacitorjs.com/)でビルド出力(`dist/`)をそのままiOSアプリにラップできる状態になっている。**iOSのビルド・署名・App Store提出にはmacOS + Xcodeが必要**で、このリポジトリのLinux開発環境では完結しない。Mac側で以下を行う:
+
+1. Apple Developer Programに加入する($99/年)。
+2. `capacitor.config.ts` の `appId` を、App Store Connectに登録した実際のBundle IDに置き換える(現状はプレースホルダ `com.example.medimate`)。
+3. 本番用の環境変数(`VITE_PUSH_SERVER_URL` / `VITE_REVENUECAT_SDK_KEY`)を設定した状態で `npm install && npm run build` する。
+4. `npx cap add ios` でiOSプロジェクトを生成し、`npx cap sync ios` でビルド済みの `dist/` を取り込む。
+5. App Store Connectで自動更新サブスク商品(¥500/月)を作成し、Product IDを取得する。
+6. RevenueCatダッシュボードでプロジェクトを作成し、App Store Connectと連携、Entitlement/Offeringを設定して公開SDKキーを取得する(→手順3に戻って再ビルド)。RevenueCatのWebhook URL(`https://<公開したserver/のURL>/api/webhooks/revenuecat`)と共有シークレットを設定し、`server/.env` の `REVENUECAT_WEBHOOK_SECRET` と一致させる。
+7. `server/` をWebhookが届く公開URLへデプロイする。
+8. `npx cap open ios` でXcodeを開き、署名(Team/Bundle ID)を設定してシミュレータまたはSandboxテスターアカウントで購入フローを確認し、審査に提出する。
+
 ## オフライン対応
 
 Service Worker(`public/sw.js`)がアプリ本体(HTML/JS/CSS/アイコン)をキャッシュし、電波が届かない場所でもアプリを開いてこれまでの記録を確認できる。ビルド出力のファイル名はVite側でハッシュ化されるため事前に列挙せず、初回オンライン時のアクセスで動的にキャッシュしていく方式(cache-first + バックグラウンド更新)。プッシュサーバーへのAPIリクエストなど他オリジンへの通信はキャッシュ対象外。

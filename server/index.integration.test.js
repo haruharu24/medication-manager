@@ -20,6 +20,7 @@ beforeAll(async () => {
   process.env.VAPID_SUBJECT = 'mailto:test@example.com';
   process.env.CORS_ORIGIN = 'http://localhost:5173';
   process.env.PUBLIC_SERVER_URL = 'http://localhost:0';
+  process.env.REVENUECAT_WEBHOOK_SECRET = 'integration-test-revenuecat-secret';
 
   serverModule = await import('./index.js');
   await new Promise(resolve => serverModule.server.listen(0, resolve));
@@ -56,6 +57,20 @@ const deleteJson = (path, body, token) =>
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body ?? {}),
   });
+
+// Household creation/join/write all require an active subscription (see
+// server/subscription.js), so most fixtures below activate one via a synthetic
+// RevenueCat webhook call before exercising those routes — this exercises the
+// real webhook handler instead of poking accountStore directly.
+const postWebhookEvent = (event) =>
+  fetch(`${baseUrl}/api/webhooks/revenuecat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.REVENUECAT_WEBHOOK_SECRET}` },
+    body: JSON.stringify({ event }),
+  });
+
+const activateSubscription = (userId) =>
+  postWebhookEvent({ type: 'INITIAL_PURCHASE', app_user_id: userId, product_id: 'family_sharing_monthly' });
 
 describe('auth API', () => {
   it('registers a new account and returns a usable token', async () => {
@@ -96,7 +111,8 @@ describe('auth API', () => {
 describe('household lifecycle + data sync', () => {
   it('lets an owner create a household, a second user join by invite code, and both read/write shared data', async () => {
     const ownerReg = await postJson('/api/auth/register', { email: 'owner@example.com', password: 'password123' });
-    const { token: ownerToken } = await ownerReg.json();
+    const { token: ownerToken, user: owner } = await ownerReg.json();
+    await activateSubscription(owner.id);
 
     const createRes = await postJson('/api/households', { name: 'テスト家族' }, ownerToken);
     expect(createRes.status).toBe(200);
@@ -104,7 +120,8 @@ describe('household lifecycle + data sync', () => {
     expect(household.inviteCode).toMatch(/^[0-9A-F]{8}$/);
 
     const memberReg = await postJson('/api/auth/register', { email: 'member@example.com', password: 'password123' });
-    const { token: memberToken } = await memberReg.json();
+    const { token: memberToken, user: member } = await memberReg.json();
+    await activateSubscription(member.id);
 
     const joinRes = await postJson('/api/households/join', { inviteCode: household.inviteCode }, memberToken);
     expect(joinRes.status).toBe(200);
@@ -131,7 +148,8 @@ describe('household lifecycle + data sync', () => {
 
   it('blocks a non-member from reading household data', async () => {
     const ownerReg = await postJson('/api/auth/register', { email: 'owner2@example.com', password: 'password123' });
-    const { token: ownerToken } = await ownerReg.json();
+    const { token: ownerToken, user: owner } = await ownerReg.json();
+    await activateSubscription(owner.id);
     const { household } = await (await postJson('/api/households', { name: '世帯2' }, ownerToken)).json();
 
     const outsiderReg = await postJson('/api/auth/register', { email: 'outsider@example.com', password: 'password123' });
@@ -143,18 +161,21 @@ describe('household lifecycle + data sync', () => {
 
   it('rejects an unknown invite code', async () => {
     const reg = await postJson('/api/auth/register', { email: 'joiner-fail@example.com', password: 'password123' });
-    const { token } = await reg.json();
+    const { token, user } = await reg.json();
+    await activateSubscription(user.id);
     const res = await postJson('/api/households/join', { inviteCode: 'NOPE0000' }, token);
     expect(res.status).toBe(404);
   });
 
   it('the owner can demote a member to viewer, which blocks that member from writing shared data', async () => {
     const ownerReg = await postJson('/api/auth/register', { email: 'role-owner@example.com', password: 'password123' });
-    const { token: ownerToken } = await ownerReg.json();
+    const { token: ownerToken, user: owner } = await ownerReg.json();
+    await activateSubscription(owner.id);
     const { household } = await (await postJson('/api/households', { name: '権限テスト世帯' }, ownerToken)).json();
 
     const memberReg = await postJson('/api/auth/register', { email: 'role-member@example.com', password: 'password123' });
     const { token: memberToken, user: member } = await memberReg.json();
+    await activateSubscription(member.id);
     await postJson('/api/households/join', { inviteCode: household.inviteCode }, memberToken);
 
     // Before demotion: member can write.
@@ -196,10 +217,12 @@ describe('household lifecycle + data sync', () => {
   it('only the owner can change member roles, and the owner\'s own role can\'t be changed', async () => {
     const ownerReg = await postJson('/api/auth/register', { email: 'role-owner2@example.com', password: 'password123' });
     const { token: ownerToken, user: owner } = await ownerReg.json();
+    await activateSubscription(owner.id);
     const { household } = await (await postJson('/api/households', { name: '世帯', ownerId: owner.id } , ownerToken)).json();
 
     const memberReg = await postJson('/api/auth/register', { email: 'role-member2@example.com', password: 'password123' });
     const { token: memberToken, user: member } = await memberReg.json();
+    await activateSubscription(member.id);
     await postJson('/api/households/join', { inviteCode: household.inviteCode }, memberToken);
 
     // A non-owner member can't change anyone's role.
@@ -217,11 +240,13 @@ describe('household lifecycle + data sync', () => {
 
   it('broadcasts a data-updated event over WebSocket to other members in real time', async () => {
     const ownerReg = await postJson('/api/auth/register', { email: 'ws-owner@example.com', password: 'password123' });
-    const { token: ownerToken } = await ownerReg.json();
+    const { token: ownerToken, user: owner } = await ownerReg.json();
+    await activateSubscription(owner.id);
     const { household } = await (await postJson('/api/households', { name: 'WS世帯' }, ownerToken)).json();
 
     const memberReg = await postJson('/api/auth/register', { email: 'ws-member@example.com', password: 'password123' });
-    const { token: memberToken } = await memberReg.json();
+    const { token: memberToken, user: member } = await memberReg.json();
+    await activateSubscription(member.id);
     await postJson('/api/households/join', { inviteCode: household.inviteCode }, memberToken);
 
     const ws = new WebSocket(wsUrl);
@@ -252,14 +277,134 @@ describe('household lifecycle + data sync', () => {
   });
 });
 
+describe('subscription gating + RevenueCat webhook', () => {
+  it('exposes subscription status on /api/auth/me, defaulting to none for a new account', async () => {
+    const reg = await postJson('/api/auth/register', { email: 'sub-me@example.com', password: 'password123' });
+    const { token } = await reg.json();
+    const res = await getJson('/api/auth/me', token);
+    const body = await res.json();
+    expect(body.subscription.status).toBe('none');
+  });
+
+  it('blocks creating or joining a household without an active subscription', async () => {
+    const ownerReg = await postJson('/api/auth/register', { email: 'nosub-owner@example.com', password: 'password123' });
+    const { token: ownerToken } = await ownerReg.json();
+
+    const createRes = await postJson('/api/households', { name: '未課金世帯' }, ownerToken);
+    expect(createRes.status).toBe(402);
+    const createBody = await createRes.json();
+    expect(createBody.code).toBe('SUBSCRIPTION_REQUIRED');
+
+    // A subscribed owner creates a household so we have a valid invite code to test joining.
+    const paidOwnerReg = await postJson('/api/auth/register', { email: 'nosub-paidowner@example.com', password: 'password123' });
+    const { token: paidOwnerToken, user: paidOwner } = await paidOwnerReg.json();
+    await activateSubscription(paidOwner.id);
+    const { household } = await (await postJson('/api/households', { name: '世帯' }, paidOwnerToken)).json();
+
+    const joinerReg = await postJson('/api/auth/register', { email: 'nosub-joiner@example.com', password: 'password123' });
+    const { token: joinerToken } = await joinerReg.json();
+    const joinRes = await postJson('/api/households/join', { inviteCode: household.inviteCode }, joinerToken);
+    expect(joinRes.status).toBe(402);
+  });
+
+  it('gates writes on the household OWNER\'s subscription (editor/viewer members ride on it), but never gates reads', async () => {
+    const ownerReg = await postJson('/api/auth/register', { email: 'lapse-owner@example.com', password: 'password123' });
+    const { token: ownerToken, user: owner } = await ownerReg.json();
+    await activateSubscription(owner.id);
+    const { household } = await (await postJson('/api/households', { name: '失効テスト世帯' }, ownerToken)).json();
+
+    const memberReg = await postJson('/api/auth/register', { email: 'lapse-member@example.com', password: 'password123' });
+    const { token: memberToken, user: member } = await memberReg.json();
+    await activateSubscription(member.id);
+    await postJson('/api/households/join', { inviteCode: household.inviteCode }, memberToken);
+
+    // Owner's subscription lapses (e.g. a failed renewal).
+    await postWebhookEvent({ type: 'EXPIRATION', app_user_id: owner.id });
+
+    // Neither the owner nor the member can write anymore...
+    const ownerWriteRes = await putJson(
+      `/api/households/${household.id}/data`,
+      { data: { medications: [], logs: [], globalLogs: [], conditions: [] } },
+      ownerToken
+    );
+    expect(ownerWriteRes.status).toBe(402);
+    const memberWriteRes = await putJson(
+      `/api/households/${household.id}/data`,
+      { data: { medications: [], logs: [], globalLogs: [], conditions: [] } },
+      memberToken
+    );
+    expect(memberWriteRes.status).toBe(402);
+
+    // ...but both can still read the existing shared data without interruption.
+    expect((await getJson(`/api/households/${household.id}/data`, ownerToken)).status).toBe(200);
+    expect((await getJson(`/api/households/${household.id}/data`, memberToken)).status).toBe(200);
+  });
+
+  it('treats grace_period as entitled (Apple still retrying the charge)', async () => {
+    const ownerReg = await postJson('/api/auth/register', { email: 'grace-owner@example.com', password: 'password123' });
+    const { token: ownerToken, user: owner } = await ownerReg.json();
+    await activateSubscription(owner.id);
+    const { household } = await (await postJson('/api/households', { name: '猶予期間世帯' }, ownerToken)).json();
+
+    await postWebhookEvent({ type: 'BILLING_ISSUE', app_user_id: owner.id });
+    // BILLING_ISSUE alone is not entitled...
+    const blockedRes = await putJson(
+      `/api/households/${household.id}/data`,
+      { data: { medications: [], logs: [], globalLogs: [], conditions: [] } },
+      ownerToken
+    );
+    expect(blockedRes.status).toBe(402);
+  });
+
+  it('rejects a webhook call with a wrong or missing secret', async () => {
+    const res = await fetch(`${baseUrl}/api/webhooks/revenuecat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer wrong-secret' },
+      body: JSON.stringify({ event: { type: 'INITIAL_PURCHASE', app_user_id: 'whoever' } }),
+    });
+    expect(res.status).toBe(401);
+
+    const noAuthRes = await fetch(`${baseUrl}/api/webhooks/revenuecat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: { type: 'INITIAL_PURCHASE', app_user_id: 'whoever' } }),
+    });
+    expect(noAuthRes.status).toBe(401);
+  });
+
+  it('returns 200 ignored for an unknown app_user_id or an unhandled event type, instead of erroring', async () => {
+    const unknownUserRes = await postWebhookEvent({ type: 'INITIAL_PURCHASE', app_user_id: 'does-not-exist' });
+    expect(unknownUserRes.status).toBe(200);
+    expect((await unknownUserRes.json()).ignored).toBe(true);
+
+    const reg = await postJson('/api/auth/register', { email: 'unhandled-event@example.com', password: 'password123' });
+    const { user } = await reg.json();
+    const unhandledRes = await postWebhookEvent({ type: 'SOME_FUTURE_EVENT', app_user_id: user.id });
+    expect(unhandledRes.status).toBe(200);
+    expect((await unhandledRes.json()).ignored).toBe(true);
+  });
+
+  it('CANCELLATION does not revoke access immediately (only EXPIRATION does)', async () => {
+    const reg = await postJson('/api/auth/register', { email: 'cancel-not-expire@example.com', password: 'password123' });
+    const { token, user } = await reg.json();
+    await activateSubscription(user.id);
+
+    await postWebhookEvent({ type: 'CANCELLATION', app_user_id: user.id });
+    const createRes = await postJson('/api/households', { name: '解約猶予世帯' }, token);
+    expect(createRes.status).toBe(200);
+  });
+});
+
 describe('ownership transfer + account deletion', () => {
   it('lets the owner transfer ownership to another member', async () => {
     const ownerReg = await postJson('/api/auth/register', { email: 'xfer-owner@example.com', password: 'password123' });
-    const { token: ownerToken } = await ownerReg.json();
+    const { token: ownerToken, user: owner } = await ownerReg.json();
+    await activateSubscription(owner.id);
     const { household } = await (await postJson('/api/households', { name: '世帯' }, ownerToken)).json();
 
     const memberReg = await postJson('/api/auth/register', { email: 'xfer-member@example.com', password: 'password123' });
     const { token: memberToken, user: member } = await memberReg.json();
+    await activateSubscription(member.id);
     await postJson('/api/households/join', { inviteCode: household.inviteCode }, memberToken);
 
     const res = await postJson(`/api/households/${household.id}/transfer-ownership`, { newOwnerId: member.id }, ownerToken);
@@ -270,11 +415,13 @@ describe('ownership transfer + account deletion', () => {
 
   it('rejects a transfer attempted by a non-owner, or to a non-member', async () => {
     const ownerReg = await postJson('/api/auth/register', { email: 'xfer-owner2@example.com', password: 'password123' });
-    const { token: ownerToken } = await ownerReg.json();
+    const { token: ownerToken, user: owner } = await ownerReg.json();
+    await activateSubscription(owner.id);
     const { household } = await (await postJson('/api/households', { name: '世帯' }, ownerToken)).json();
 
     const memberReg = await postJson('/api/auth/register', { email: 'xfer-member2@example.com', password: 'password123' });
     const { token: memberToken, user: member } = await memberReg.json();
+    await activateSubscription(member.id);
     await postJson('/api/households/join', { inviteCode: household.inviteCode }, memberToken);
 
     const forbiddenRes = await postJson(`/api/households/${household.id}/transfer-ownership`, { newOwnerId: member.id }, memberToken);
@@ -308,11 +455,13 @@ describe('ownership transfer + account deletion', () => {
 
   it('blocks deleting an owner of a household with other members, and unblocks after transferring ownership', async () => {
     const ownerReg = await postJson('/api/auth/register', { email: 'del-blocked-owner@example.com', password: 'password123' });
-    const { token: ownerToken } = await ownerReg.json();
+    const { token: ownerToken, user: owner } = await ownerReg.json();
+    await activateSubscription(owner.id);
     const { household } = await (await postJson('/api/households', { name: '削除ブロック世帯' }, ownerToken)).json();
 
     const memberReg = await postJson('/api/auth/register', { email: 'del-blocked-member@example.com', password: 'password123' });
     const { token: memberToken, user: member } = await memberReg.json();
+    await activateSubscription(member.id);
     await postJson('/api/households/join', { inviteCode: household.inviteCode }, memberToken);
 
     const blockedRes = await deleteJson('/api/auth/me', { password: 'password123' }, ownerToken);

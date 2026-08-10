@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { LogIn, UserPlus, LogOut, Users, Copy, Check, Loader2, RefreshCw, AlertTriangle, Eye, ShieldAlert, Trash2 } from 'lucide-react';
+import { LogIn, UserPlus, LogOut, Users, Copy, Check, Loader2, RefreshCw, AlertTriangle, Eye, ShieldAlert, Trash2, CreditCard } from 'lucide-react';
 import { StoredAuth } from '../utils/auth';
 import { Household, HouseholdMember } from '../utils/household';
+import { ApiError } from '../utils/api';
+import { SubscriptionInfo, isSubscriptionActive } from '../utils/subscription';
 import { DeleteAccountModal } from './DeleteAccountModal';
 
 type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
@@ -13,6 +15,7 @@ interface AccountPanelProps {
   members: HouseholdMember[];
   syncStatus: SyncStatus;
   syncError: string | null;
+  subscription: SubscriptionInfo | null;
   onLogin: (email: string, password: string) => Promise<void>;
   onRegister: (email: string, password: string) => Promise<void>;
   onLogout: () => void;
@@ -23,6 +26,8 @@ interface AccountPanelProps {
   onUpdateMemberRole: (userId: string, role: 'editor' | 'viewer') => Promise<void>;
   onTransferOwnership: (userId: string) => Promise<void>;
   onDeleteAccount: (password: string) => Promise<void>;
+  onPurchase: () => Promise<void>;
+  onRestorePurchases: () => Promise<void>;
 }
 
 const SYNC_LABEL: Record<SyncStatus, string> = {
@@ -39,6 +44,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
   members,
   syncStatus,
   syncError,
+  subscription,
   onLogin,
   onRegister,
   onLogout,
@@ -49,6 +55,8 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
   onUpdateMemberRole,
   onTransferOwnership,
   onDeleteAccount,
+  onPurchase,
+  onRestorePurchases,
 }) => {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
@@ -57,19 +65,28 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
   const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when a create/join attempt fails with the server's 402 SUBSCRIPTION_REQUIRED
+  // — a fallback for when this device's cached subscription state is stale.
+  const [subscriptionRequiredFallback, setSubscriptionRequiredFallback] = useState(false);
   const [copied, setCopied] = useState(false);
   const [transferTargetId, setTransferTargetId] = useState('');
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   const activeHousehold = households.find(h => h.id === activeHouseholdId) || null;
+  const needsPaywall = subscriptionRequiredFallback || !isSubscriptionActive(subscription?.status);
 
   const withBusy = async (fn: () => Promise<void>) => {
     setBusy(true);
     setError(null);
     try {
       await fn();
+      setSubscriptionRequiredFallback(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : '操作に失敗しました');
+      if (e instanceof ApiError && e.data?.code === 'SUBSCRIPTION_REQUIRED') {
+        setSubscriptionRequiredFallback(true);
+      } else {
+        setError(e instanceof Error ? e.message : '操作に失敗しました');
+      }
     } finally {
       setBusy(false);
     }
@@ -282,45 +299,75 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({
             </div>
           )}
 
-          <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-600 dark:text-slate-500 uppercase tracking-widest">新しい世帯を作る</p>
-            <div className="flex gap-2">
-              <input
-                value={householdName}
-                onChange={e => setHouseholdName(e.target.value)}
-                placeholder="例: 田中家"
-                className="flex-1 bg-slate-50 dark:bg-slate-900 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 dark:text-slate-100 outline-none"
-              />
+          {needsPaywall ? (
+            <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-500/10 rounded-2xl">
+              <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
+                <CreditCard size={16} className="shrink-0" />
+                <p className="font-black text-sm">家族共有は月額プラン</p>
+              </div>
+              <p className="text-xs font-bold text-slate-600 dark:text-slate-400 leading-relaxed">
+                世帯の作成・参加には月額¥500のサブスクリプションが必要です。ご自身のお薬の記録・管理は引き続き無料でご利用いただけます。
+              </p>
               <button
-                disabled={busy || !householdName}
-                onClick={() => withBusy(async () => { await onCreateHousehold(householdName); setHouseholdName(''); })}
-                className="px-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-black text-xs disabled:opacity-50"
+                disabled={busy}
+                onClick={() => withBusy(onPurchase)}
+                className="w-full py-3 bg-blue-700 text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95 transition-all"
               >
-                作成
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
+                月額¥500で登録する
               </button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-600 dark:text-slate-500 uppercase tracking-widest">招待コードで参加</p>
-            <div className="flex gap-2">
-              <input
-                value={inviteCode}
-                onChange={e => setInviteCode(e.target.value.toUpperCase())}
-                placeholder="招待コード"
-                className="flex-1 bg-slate-50 dark:bg-slate-900 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 dark:text-slate-100 outline-none uppercase"
-              />
               <button
-                disabled={busy || !inviteCode}
-                onClick={() => withBusy(async () => { await onJoinHousehold(inviteCode); setInviteCode(''); })}
-                className="px-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-black text-xs disabled:opacity-50"
+                disabled={busy}
+                onClick={() => withBusy(onRestorePurchases)}
+                className="w-full py-2 text-blue-700 dark:text-blue-400 font-bold text-xs disabled:opacity-50"
               >
-                参加
+                購入を復元
               </button>
+              {error && <p className="text-xs font-bold text-red-600">{error}</p>}
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <p className="text-[10px] font-black text-slate-600 dark:text-slate-500 uppercase tracking-widest">新しい世帯を作る</p>
+                <div className="flex gap-2">
+                  <input
+                    value={householdName}
+                    onChange={e => setHouseholdName(e.target.value)}
+                    placeholder="例: 田中家"
+                    className="flex-1 bg-slate-50 dark:bg-slate-900 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 dark:text-slate-100 outline-none"
+                  />
+                  <button
+                    disabled={busy || !householdName}
+                    onClick={() => withBusy(async () => { await onCreateHousehold(householdName); setHouseholdName(''); })}
+                    className="px-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-black text-xs disabled:opacity-50"
+                  >
+                    作成
+                  </button>
+                </div>
+              </div>
 
-          {error && <p className="text-xs font-bold text-red-600">{error}</p>}
+              <div className="space-y-2">
+                <p className="text-[10px] font-black text-slate-600 dark:text-slate-500 uppercase tracking-widest">招待コードで参加</p>
+                <div className="flex gap-2">
+                  <input
+                    value={inviteCode}
+                    onChange={e => setInviteCode(e.target.value.toUpperCase())}
+                    placeholder="招待コード"
+                    className="flex-1 bg-slate-50 dark:bg-slate-900 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 dark:text-slate-100 outline-none uppercase"
+                  />
+                  <button
+                    disabled={busy || !inviteCode}
+                    onClick={() => withBusy(async () => { await onJoinHousehold(inviteCode); setInviteCode(''); })}
+                    className="px-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-black text-xs disabled:opacity-50"
+                  >
+                    参加
+                  </button>
+                </div>
+              </div>
+
+              {error && <p className="text-xs font-bold text-red-600">{error}</p>}
+            </>
+          )}
         </div>
       )}
 

@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { activateSubscription } from './helpers/subscription';
 
 test.describe('family sharing (household sync)', () => {
-  test('a medication added on one device appears on another via real-time sync', async ({ browser }) => {
+  test('a medication added on one device appears on another via real-time sync', async ({ browser, request }) => {
     const suffix = Date.now();
     // browser.newContext() doesn't inherit the project's default storageState
     // (that only applies to the auto-created `page`/`context` fixtures), so the
@@ -24,6 +25,10 @@ test.describe('family sharing (household sync)', () => {
     await pageA.getByPlaceholder('メールアドレス').fill(`alice-${suffix}@example.com`);
     await pageA.getByPlaceholder('パスワード(8文字以上)').fill('password123');
     await pageA.getByRole('button', { name: 'アカウントを作成する' }).click();
+    await expect(pageA.getByText(`alice-${suffix}@example.com`)).toBeVisible();
+    await activateSubscription(request, `alice-${suffix}@example.com`, 'password123');
+    await pageA.reload();
+    await pageA.getByRole('button', { name: '設定', exact: true }).click();
 
     await pageA.getByPlaceholder('例: 田中家').fill('E2E家族');
     await pageA.getByRole('button', { name: '作成', exact: true }).click();
@@ -37,6 +42,10 @@ test.describe('family sharing (household sync)', () => {
     await pageB.getByPlaceholder('メールアドレス').fill(`bob-${suffix}@example.com`);
     await pageB.getByPlaceholder('パスワード(8文字以上)').fill('password123');
     await pageB.getByRole('button', { name: 'アカウントを作成する' }).click();
+    await expect(pageB.getByText(`bob-${suffix}@example.com`)).toBeVisible();
+    await activateSubscription(request, `bob-${suffix}@example.com`, 'password123');
+    await pageB.reload();
+    await pageB.getByRole('button', { name: '設定', exact: true }).click();
 
     await pageB.getByPlaceholder('招待コード').fill(inviteCode!);
     await pageB.getByRole('button', { name: '参加', exact: true }).click();

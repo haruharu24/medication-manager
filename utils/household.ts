@@ -1,5 +1,6 @@
 import { apiRequest, getWsUrl } from './api';
 import { Medication, MedicationLog, GlobalActionLog, DailyCondition, VitalRecord, MedicalRecord, MedicalContacts } from '../types';
+import { SubscriptionInfo } from './subscription';
 
 export interface Household {
   id: string;
@@ -31,7 +32,7 @@ export interface SyncedData {
 }
 
 export const fetchMe = (token: string) =>
-  apiRequest<{ user: { id: string; email: string }; households: Household[] }>('/api/auth/me', { token });
+  apiRequest<{ user: { id: string; email: string }; households: Household[]; subscription: SubscriptionInfo }>('/api/auth/me', { token });
 
 export const createHousehold = (token: string, name: string) =>
   apiRequest<{ household: Household }>('/api/households', { method: 'POST', token, body: { name } });

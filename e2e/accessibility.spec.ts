@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { activateSubscription } from './helpers/subscription';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OCR_FIXTURE_PATH = path.join(__dirname, 'fixtures', 'ocr-sample.png');
@@ -37,7 +38,7 @@ test.describe('accessibility @a11y', () => {
     expect(violations, formatViolations(violations)).toEqual([]);
   });
 
-  test('the settings screen with the owner-transfer control (multi-member household) has no detectable a11y violations', async ({ browser }) => {
+  test('the settings screen with the owner-transfer control (multi-member household) has no detectable a11y violations', async ({ browser, request }) => {
     const suffix = Date.now();
     const ctxOwner = await browser.newContext();
     const ctxMember = await browser.newContext();
@@ -55,6 +56,10 @@ test.describe('accessibility @a11y', () => {
     await pageOwner.getByPlaceholder('メールアドレス').fill(`a11y-owner-${suffix}@example.com`);
     await pageOwner.getByPlaceholder('パスワード(8文字以上)').fill('password123');
     await pageOwner.getByRole('button', { name: 'アカウントを作成する' }).click();
+    await expect(pageOwner.getByText(`a11y-owner-${suffix}@example.com`)).toBeVisible();
+    await activateSubscription(request, `a11y-owner-${suffix}@example.com`, 'password123');
+    await pageOwner.reload();
+    await pageOwner.getByRole('button', { name: '設定', exact: true }).click();
     await pageOwner.getByPlaceholder('例: 田中家').fill('a11yテスト家族');
     await pageOwner.getByRole('button', { name: '作成', exact: true }).click();
     const inviteText = await pageOwner.getByText(/招待コード:/).innerText();
@@ -64,6 +69,10 @@ test.describe('accessibility @a11y', () => {
     await pageMember.getByPlaceholder('メールアドレス').fill(`a11y-member-${suffix}@example.com`);
     await pageMember.getByPlaceholder('パスワード(8文字以上)').fill('password123');
     await pageMember.getByRole('button', { name: 'アカウントを作成する' }).click();
+    await expect(pageMember.getByText(`a11y-member-${suffix}@example.com`)).toBeVisible();
+    await activateSubscription(request, `a11y-member-${suffix}@example.com`, 'password123');
+    await pageMember.reload();
+    await pageMember.getByRole('button', { name: '設定', exact: true }).click();
     await pageMember.getByPlaceholder('招待コード').fill(inviteCode!);
     await pageMember.getByRole('button', { name: '参加', exact: true }).click();
     await expect(pageMember.getByText('a11yテスト家族')).toBeVisible();
@@ -77,6 +86,23 @@ test.describe('accessibility @a11y', () => {
 
     await ctxOwner.close();
     await ctxMember.close();
+  });
+
+  test('the family-sharing paywall card has no detectable a11y violations', async ({ page }) => {
+    const suffix = Date.now();
+    await page.goto('/');
+    await page.getByRole('button', { name: '設定', exact: true }).click();
+    await page.getByRole('button', { name: '新規登録' }).click();
+    await page.getByPlaceholder('メールアドレス').fill(`a11y-paywall-${suffix}@example.com`);
+    await page.getByPlaceholder('パスワード(8文字以上)').fill('password123');
+    await page.getByRole('button', { name: 'アカウントを作成する' }).click();
+
+    // A freshly registered account has no subscription, so the settings screen
+    // shows the paywall card instead of the household create/join forms.
+    await expect(page.getByText('家族共有は月額プラン')).toBeVisible();
+
+    const violations = await scan(page);
+    expect(violations, formatViolations(violations)).toEqual([]);
   });
 
   test('report setup view has no detectable a11y violations', async ({ page }) => {

@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { activateSubscription } from './helpers/subscription';
 
 test.describe('family sharing: view-only (viewer) role', () => {
-  test('a member demoted to viewer loses the add/edit UI but keeps seeing synced data', async ({ browser }) => {
+  test('a member demoted to viewer loses the add/edit UI but keeps seeing synced data', async ({ browser, request }) => {
     const suffix = Date.now();
     const ctxA = await browser.newContext();
     const ctxB = await browser.newContext();
@@ -21,6 +22,10 @@ test.describe('family sharing: view-only (viewer) role', () => {
     await pageA.getByPlaceholder('メールアドレス').fill(`owner-${suffix}@example.com`);
     await pageA.getByPlaceholder('パスワード(8文字以上)').fill('password123');
     await pageA.getByRole('button', { name: 'アカウントを作成する' }).click();
+    await expect(pageA.getByText(`owner-${suffix}@example.com`)).toBeVisible();
+    await activateSubscription(request, `owner-${suffix}@example.com`, 'password123');
+    await pageA.reload();
+    await pageA.getByRole('button', { name: '設定', exact: true }).click();
 
     await pageA.getByPlaceholder('例: 田中家').fill('権限テスト家族');
     await pageA.getByRole('button', { name: '作成', exact: true }).click();
@@ -34,6 +39,10 @@ test.describe('family sharing: view-only (viewer) role', () => {
     await pageB.getByPlaceholder('メールアドレス').fill(`viewer-${suffix}@example.com`);
     await pageB.getByPlaceholder('パスワード(8文字以上)').fill('password123');
     await pageB.getByRole('button', { name: 'アカウントを作成する' }).click();
+    await expect(pageB.getByText(`viewer-${suffix}@example.com`)).toBeVisible();
+    await activateSubscription(request, `viewer-${suffix}@example.com`, 'password123');
+    await pageB.reload();
+    await pageB.getByRole('button', { name: '設定', exact: true }).click();
 
     await pageB.getByPlaceholder('招待コード').fill(inviteCode!);
     await pageB.getByRole('button', { name: '参加', exact: true }).click();
