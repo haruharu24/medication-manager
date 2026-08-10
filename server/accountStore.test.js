@@ -38,6 +38,62 @@ describe('users', () => {
   });
 });
 
+describe('subscription fields', () => {
+  it('createUser initializes subscription fields to their unsubscribed defaults', () => {
+    const user = store.createUser({ email: 'sub-new@example.com', passwordHash: 'hash' });
+    expect(user.subscriptionStatus).toBe('none');
+    expect(user.revenueCatCustomerId).toBeNull();
+    expect(user.subscriptionProductId).toBeNull();
+    expect(user.currentPeriodEnd).toBeNull();
+    expect(user.subscriptionUpdatedAt).toBeNull();
+  });
+
+  it('backfills subscription fields for a user record written before this feature existed', () => {
+    const dataFile = path.join(process.env.MEDIMATE_DATA_DIR, 'accounts.json');
+    const legacyUser = { id: 'legacy-1', email: 'legacy@example.com', passwordHash: 'hash', createdAt: new Date().toISOString() };
+    fs.writeFileSync(dataFile, JSON.stringify({ users: [legacyUser], households: [], householdMembers: [], householdData: [] }, null, 2));
+
+    expect(store.findUserById('legacy-1')).toMatchObject({ subscriptionStatus: 'none', revenueCatCustomerId: null });
+    expect(store.findUserByEmail('legacy@example.com')).toMatchObject({ subscriptionStatus: 'none' });
+    expect(store.getSubscriptionStatus('legacy-1')).toBe('none');
+  });
+
+  it('getSubscriptionStatus returns null for an unknown user', () => {
+    expect(store.getSubscriptionStatus('nobody')).toBeNull();
+  });
+
+  it('updateSubscriptionFromWebhook writes status/productId/periodEnd and stamps subscriptionUpdatedAt', () => {
+    const user = store.createUser({ email: 'sub-webhook@example.com', passwordHash: 'hash' });
+
+    const updated = store.updateSubscriptionFromWebhook({
+      userId: user.id,
+      status: 'active',
+      productId: 'family_sharing_monthly',
+      periodEnd: '2026-09-10T00:00:00.000Z',
+    });
+
+    expect(updated.subscriptionStatus).toBe('active');
+    expect(updated.revenueCatCustomerId).toBe(user.id);
+    expect(updated.subscriptionProductId).toBe('family_sharing_monthly');
+    expect(updated.currentPeriodEnd).toBe('2026-09-10T00:00:00.000Z');
+    expect(updated.subscriptionUpdatedAt).toBeTruthy();
+    expect(store.findUserById(user.id).subscriptionStatus).toBe('active');
+  });
+
+  it('updateSubscriptionFromWebhook can update status alone, leaving productId/periodEnd unchanged', () => {
+    const user = store.createUser({ email: 'sub-webhook2@example.com', passwordHash: 'hash' });
+    store.updateSubscriptionFromWebhook({ userId: user.id, status: 'active', productId: 'family_sharing_monthly', periodEnd: '2026-09-10T00:00:00.000Z' });
+
+    const cancelled = store.updateSubscriptionFromWebhook({ userId: user.id, status: 'active' });
+    expect(cancelled.subscriptionProductId).toBe('family_sharing_monthly');
+    expect(cancelled.currentPeriodEnd).toBe('2026-09-10T00:00:00.000Z');
+  });
+
+  it('throws for an unknown user id', () => {
+    expect(() => store.updateSubscriptionFromWebhook({ userId: 'nobody', status: 'active' })).toThrow('USER_NOT_FOUND');
+  });
+});
+
 describe('households', () => {
   it('creating a household makes the owner its first member', () => {
     const owner = store.createUser({ email: 'owner@example.com', passwordHash: 'hash' });

@@ -1,13 +1,11 @@
 import fs from 'fs';
 import { defineConfig, devices } from '@playwright/test';
+import { APP_PORT, SERVER_PORT, REVENUECAT_WEBHOOK_SECRET } from './e2e/testConfig';
 
 // Fixed test-only VAPID keypair for the push server started by webServer below.
 // Never used to send a real push — E2E tests stub/skip anything that would.
 const TEST_VAPID_PUBLIC_KEY = 'BAsiBc8yWqg9pWJJfgKl1yNQIpTitsAS65SNOECH9IoLkCGiqMhhbm59ZNsF0icuRLlQuKYhXoODJ8lLclxbQ2I';
 const TEST_VAPID_PRIVATE_KEY = 'Xs3xxSIj_d2qDWUd6GUGHuMRoiCp0OOwcYjEgFM58bI';
-
-const APP_PORT = 5183;
-const SERVER_PORT = 8788;
 
 // This sandbox ships a pre-installed Chromium at a fixed path (see repo/environment
 // docs) instead of the one `playwright install` would fetch. Use it only when it's
@@ -59,6 +57,7 @@ export default defineConfig({
         VAPID_PRIVATE_KEY: TEST_VAPID_PRIVATE_KEY,
         VAPID_SUBJECT: 'mailto:test@example.com',
         JWT_SECRET: 'e2e-test-secret-do-not-use-in-prod',
+        REVENUECAT_WEBHOOK_SECRET,
         MEDIMATE_DATA_DIR: process.env.MEDIMATE_DATA_DIR || '/tmp/medimate-e2e-server-data',
       },
     },
