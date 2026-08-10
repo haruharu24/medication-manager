@@ -1,9 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { apiRequest } from './api';
-
-vi.mock('./api', () => ({
-  apiRequest: vi.fn(),
-}));
 
 // jsdom (this test environment) has neither an androidBridge nor a
 // webkit.messageHandlers.bridge on window, so @capacitor/core's real
@@ -17,10 +12,7 @@ import {
   getOfferings,
   purchasePackage,
   restorePurchases,
-  fetchSubscription,
 } from './subscription';
-
-const mockedApiRequest = vi.mocked(apiRequest);
 
 describe('isSubscriptionActive', () => {
   it('treats active and grace_period as entitled', () => {
@@ -59,25 +51,6 @@ describe('RevenueCat helpers outside a native shell', () => {
   it('restorePurchases reports the feature as unavailable without throwing', async () => {
     const result = await restorePurchases();
     expect(result).toEqual({ ok: false, reason: 'この操作はアプリ内でのみ利用できます' });
-  });
-});
-
-describe('fetchSubscription', () => {
-  beforeEach(() => {
-    mockedApiRequest.mockReset();
-  });
-
-  it('fetches /api/auth/me and extracts the subscription field', async () => {
-    mockedApiRequest.mockResolvedValue({
-      user: { id: 'u1', email: 'a@example.com' },
-      households: [],
-      subscription: { status: 'active', productId: 'family_sharing_monthly', currentPeriodEnd: null },
-    });
-
-    const result = await fetchSubscription('tok');
-
-    expect(mockedApiRequest).toHaveBeenCalledWith('/api/auth/me', { token: 'tok' });
-    expect(result).toEqual({ status: 'active', productId: 'family_sharing_monthly', currentPeriodEnd: null });
   });
 });
 

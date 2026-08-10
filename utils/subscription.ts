@@ -15,7 +15,6 @@
 import { Capacitor } from '@capacitor/core';
 import { Purchases } from '@revenuecat/purchases-capacitor';
 import type { PurchasesOffering, PurchasesPackage } from '@revenuecat/purchases-capacitor';
-import { apiRequest } from './api';
 
 const REVENUECAT_SDK_KEY = (import.meta as any).env?.VITE_REVENUECAT_SDK_KEY as string | undefined;
 
@@ -80,9 +79,3 @@ export const restorePurchases = async (): Promise<PurchaseResult> => {
     return { ok: false, reason: e?.message || '購入の復元に失敗しました' };
   }
 };
-
-// Server's view of the subscription (source of truth, driven by the RevenueCat
-// webhook) — used to render the paywall / gate UI, fetched alongside households
-// on /api/auth/me rather than as its own endpoint.
-export const fetchSubscription = (token: string) =>
-  apiRequest<{ subscription: SubscriptionInfo }>('/api/auth/me', { token }).then((res) => res.subscription);
